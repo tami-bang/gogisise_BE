@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gogisise Database ERD</title>
+    <script type="module">
+        import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+        mermaid.initialize({ startOnLoad: true, theme: 'default' });
+    </script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            padding: 20px;
+            background-color: #f9fafb;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 2rem;
+        }
+
+        .mermaid {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>고기시세 (Gogisise) Database ERD</h1>
+    <div class="mermaid">
+        erDiagram
+        Users ||--o{ User_Social_Accounts : "has"
+        Users ||--o{ User_Tokens : "has session"
+        Users ||--o{ Favorites : "adds"
+        Users ||--o{ User_Views_Log : "views"
+
+        Market_Items ||--o{ Favorites : "is added to"
+        Market_Items ||--o{ User_Views_Log : "is viewed"
+        Market_Items ||--o{ Market_Item_Prices : "has daily price"
+
+        Users {
+        VARCHAR userId PK
+        VARCHAR email UK
+        VARCHAR phone UK "휴대폰 번호"
+        VARCHAR password "Nullable"
+        VARCHAR nickname
+        VARCHAR status
+        DATETIME createdAt "Audit"
+        DATETIME updatedAt "Audit"
+        DATETIME deletedAt "Nullable (Soft Delete)"
+        }
+
+        User_Social_Accounts {
+        VARCHAR socialId PK
+        VARCHAR userId FK
+        VARCHAR provider
+        VARCHAR providerUid
+        DATETIME createdAt "Audit"
+        }
+
+        User_Tokens {
+        VARCHAR tokenId PK
+        VARCHAR userId FK
+        VARCHAR refreshToken
+        BOOLEAN isBlacklisted
+        DATETIME expiresAt "TTL 기준점"
+        DATETIME createdAt "Audit"
+        }
+
+        Favorites {
+        VARCHAR favoriteId PK
+        VARCHAR userId FK "Composite Unique"
+        VARCHAR itemId FK "Composite Unique"
+        DATETIME createdAt "Audit"
+        }
+
+        User_Views_Log {
+        VARCHAR logId PK
+        VARCHAR userId FK
+        VARCHAR itemId FK
+        DATETIME viewedAt "파티셔닝 기준"
+        }
+
+        Market_Items {
+        VARCHAR itemId PK
+        VARCHAR species
+        VARCHAR storageType
+        VARCHAR category
+        VARCHAR displayName
+        VARCHAR grade "Nullable"
+        VARCHAR searchKeywords
+        VARCHAR currency
+        VARCHAR priceUnit
+        DATETIME createdAt "Audit"
+        DATETIME updatedAt "Audit"
+        }
+
+        Market_Item_Prices {
+        VARCHAR priceId PK
+        VARCHAR itemId FK "Composite Unique"
+        DATE marketDate "Composite Unique"
+        INT price "Nullable"
+        INT previousPrice "Nullable"
+        INT changeAmount "Nullable"
+        VARCHAR trendStatus "Nullable"
+        INT highestPrice "Nullable"
+        INT lowestPrice "Nullable"
+        INT participantCount "Nullable"
+        DATETIME createdAt "Audit"
+        }
+
+        Raw_Records {
+        VARCHAR rawRecordId PK
+        VARCHAR sourceName
+        DATETIME collectedAt
+        VARCHAR rawProductName
+        INT price
+        VARCHAR species
+        VARCHAR storageType
+        VARCHAR grade "Nullable"
+        INT ageInMonths "Nullable"
+        DATETIME createdAt "Audit"
+        }
+    </div>
+</body>
+
+</html>

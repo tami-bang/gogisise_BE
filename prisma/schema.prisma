@@ -1,0 +1,135 @@
+generator client {
+  provider      = "prisma-client-js"
+  engineType    = "library"
+  binaryTargets = ["native", "linux-musl", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model RawRecord {
+  rawRecordId    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sourceName     String   @db.VarChar
+  collectedAt    DateTime @db.Timestamp(6)
+  rawProductName String   @db.VarChar
+  price          Int      @db.Integer
+  species        String   @db.VarChar
+  storageType    String   @db.VarChar
+  grade          String?  @db.VarChar
+  ageInMonths    Int?     @db.Integer
+  createdAt      DateTime @default(now()) @db.Timestamp(6)
+
+  @@map("Raw_Records")
+}
+
+model MarketItem {
+  itemId         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  species        String   @db.VarChar
+  storageType    String   @db.VarChar
+  category       String   @db.VarChar
+  displayName    String   @db.VarChar
+  grade          String?  @db.VarChar
+  searchKeywords String   @db.VarChar
+  currency       String   @default("KRW") @db.VarChar
+  priceUnit      String   @default("KRW_PER_KG") @db.VarChar
+  createdAt      DateTime @default(now()) @db.Timestamp(6)
+  updatedAt      DateTime @default(now()) @db.Timestamp(6)
+
+  prices    MarketItemPrice[]
+  favorites Favorite[]
+  views     UserViewsLog[]
+
+  @@map("Market_Items")
+}
+
+model MarketItemPrice {
+  priceId          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId           String     @db.Uuid
+  marketDate       DateTime   @db.Date
+  price            Int?       @db.Integer
+  previousPrice    Int?       @db.Integer
+  changeAmount     Int?       @db.Integer
+  trendStatus      String?    @db.VarChar
+  highestPrice     Int?       @db.Integer
+  lowestPrice      Int?       @db.Integer
+  participantCount Int?       @db.Integer
+  createdAt        DateTime   @default(now()) @db.Timestamp(6)
+
+  item             MarketItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade, map: "fk_market_item_prices_item")
+
+  @@unique([itemId, marketDate], map: "uk_market_item_prices_date")
+  @@map("Market_Item_Prices")
+}
+
+model User {
+  userId         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email          String    @unique @db.VarChar
+  phone          String    @unique @db.VarChar
+  password       String?   @db.VarChar
+  nickname       String    @db.VarChar
+  status         String    @default("ACTIVE") @db.VarChar
+  createdAt      DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt      DateTime  @default(now()) @db.Timestamp(6)
+  deletedAt      DateTime? @db.Timestamp(6)
+
+  socialAccounts UserSocialAccount[]
+  tokens         UserToken[]
+  favorites      Favorite[]
+  views          UserViewsLog[]
+
+  @@map("Users")
+}
+
+model UserSocialAccount {
+  socialId    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @db.Uuid
+  provider    String   @db.VarChar
+  providerUid String   @db.VarChar
+  createdAt   DateTime @default(now()) @db.Timestamp(6)
+
+  user        User     @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_social_accounts_user")
+
+  @@map("User_Social_Accounts")
+}
+
+model UserToken {
+  tokenId       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @db.Uuid
+  refreshToken  String   @db.VarChar
+  isBlacklisted Boolean  @default(false)
+  expiresAt     DateTime @db.Timestamp(6)
+  createdAt     DateTime @default(now()) @db.Timestamp(6)
+
+  user          User     @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_user_tokens_user")
+
+  @@map("User_Tokens")
+}
+
+model Favorite {
+  favoriteId String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @db.Uuid
+  itemId     String   @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamp(6)
+
+  user       User       @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_favorites_user")
+  item       MarketItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade, map: "fk_favorites_item")
+
+  @@unique([userId, itemId], map: "uk_favorites_user_item")
+  @@map("Favorites")
+}
+
+model UserViewsLog {
+  logId     String   @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  itemId    String   @db.Uuid
+  viewedAt  DateTime @default(now()) @db.Timestamp(6)
+
+  user      User       @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_views_log_user")
+  item      MarketItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade, map: "fk_views_log_item")
+
+  // 파티셔닝 테이블의 특성상 파티션 키(viewedAt)가 PK에 포함되어야 함
+  @@id([logId, viewedAt])
+  @@map("User_Views_Log")
+}
