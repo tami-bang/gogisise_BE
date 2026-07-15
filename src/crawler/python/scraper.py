@@ -206,8 +206,12 @@ def fetch_categories() -> List[str]:
     if not ctg_nos:
         logger.warning("카테고리 목록이 비어있습니다. 알려진 카테고리로 폴백합니다.")
         # 알려진 카테고리 번호 폴백
-        ctg_nos = ["130101", "130201", "130301", "130401",
-                   "130501", "130601", "130701", "130801"]
+        ctg_nos = ["140101", "140201", "310101", "310201"]
+
+    # [USER REQUEST] "국내산 한우 암소" (14) 및 "국내산 돈육" (31) 카테고리만 수집하여 속도 최적화
+    filtered_ctg_nos = [c for c in ctg_nos if c.startswith("14") or c.startswith("31")]
+    if filtered_ctg_nos:
+        ctg_nos = filtered_ctg_nos
 
     logger.info("카테고리 %d개 로드 완료: %s", len(ctg_nos), ctg_nos[:5])
     return list(dict.fromkeys(ctg_nos))
