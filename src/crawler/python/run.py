@@ -6,9 +6,14 @@ import logging
 
 from scraper import GeumcheonScraper
 
+import io
+
+# Windows 환경 stdout UTF-8 강제
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+
 # 로그 출력을 stderr로 변경하여 stdout에는 JSON 응답만 출력되도록 설정
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.ERROR,
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler(sys.stderr)]
 )
