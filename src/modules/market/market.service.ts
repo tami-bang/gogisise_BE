@@ -90,32 +90,58 @@ export class MarketService {
     }
 
     // 1. 상세 페이지 필터링 로직 (Strict Filtering)
-    // 데이터베이스 조회 시 일차적으로 축종, 보관상태 필터링을 거치고 넉넉히 가져옴
+    // DB 레벨에서 최대한 필터링을 수행하여 희귀 품목이 누락되지 않도록 함
+    const whereCondition: any = {
+      species: item.species,
+      storageType: item.storageType,
+    };
+
+    if (item.grade) {
+      whereCondition.grade = item.grade;
+    }
+
+    // 한우(BEEF) 암소 40개월 미만 처리 (원본 정책 유지)
+    if (item.species === 'BEEF') {
+      // 하지만 무조건 40미만이 아니라 '암소'일 때만 적용하는 것이 정확함
+      // RawRecord에서 gender 필드가 없으므로, 원본 상품명에 '암소'가 들어가는지 확인 불가능(DB레벨)
+      // 기존 코드대로 일괄 필터링 유지 (또는 메모리 필터링으로 이관)
+    }
+
+    if (item.category && item.category !== '기타') {
+      whereCondition.rawProductName = {
+        contains: item.category,
+      };
+    } else {
+      // 기타 카테고리의 경우, displayName에 원본 상품명 정보가 들어있음
+      // '/'로 구분된 경우 부위명 부분 추출 (예: 금천/냉장/꾸리살/1 -> 꾸리살)
+      const parts = item.displayName.split('/');
+      const searchKeyword = parts.length >= 3 ? parts[2] : item.displayName.substring(0, 10);
+      whereCondition.rawProductName = {
+        contains: searchKeyword.replace(/[0-9\+\s]+$/, '').trim(), // 등급부분 제거
+      };
+    }
+
     const rawRecords = await this.prisma.rawRecord.findMany({
-      where: {
-        species: item.species,
-        storageType: item.storageType,
-      },
+      where: whereCondition,
       orderBy: { collectedAt: 'desc' },
-      take: 200, // 충분한 수량을 가져와서 메모리에서 완벽 일치 검사
+      take: 100, // DB에서 충분히 필터링된 데이터 100개 확보
     });
 
-    // 메모리에서 4가지 조건(축종, 보관상태, 카테고리, 등급) 완벽 일치 필터링
+    // 메모리에서 정밀 조건 완벽 일치 필터링
     const strictFilteredRecords = rawRecords.filter((r) => {
-      // 1) 축종 재검증
-      if (r.species !== item.species) return false;
-      // 2) 보관상태 재검증
-      if (r.storageType !== item.storageType) return false;
-
       const rawName = r.rawProductName;
 
-      // 3) 카테고리(부위명) 완벽 포함 여부
-      // 안심을 찾을 때 등심이 섞이지 않도록 처리 (단순 contains 방지)
-      if (item.category && item.category !== '기타') {
-        if (!rawName.includes(item.category)) return false;
+      // 1) 기타 카테고리 추가 검증
+      if (item.category === '기타') {
+         // 기타 카테고리인데 너무 엉뚱한게 잡히면 안되므로, 
+         // displayName의 핵심 키워드가 포함되어 있는지 확인
+         const keyword = item.displayName.split('/')[2];
+         if (keyword && !rawName.includes(keyword.replace(/[0-9\+\s]+$/, '').trim())) {
+             return false;
+         }
       }
 
-      // 4) 등급(grade) 완벽 일치 여부
+      // 2) 등급(grade) 완벽 일치 여부 검증
       if (item.grade) {
         if (!rawName.includes(item.grade)) return false;
         
@@ -127,9 +153,9 @@ export class MarketService {
         }
       }
 
-      // 5) 한우(BEEF)의 경우 암소 40개월 미만 처리 (원본 정책 유지)
+      // 3) 한우(BEEF) 암소 40개월 미만 처리
       if (item.species === 'BEEF') {
-        if (r.ageInMonths && r.ageInMonths >= 40) return false;
+        if (rawName.includes('암소') && r.ageInMonths && r.ageInMonths >= 40) return false;
       }
 
       return true;
@@ -281,15 +307,22 @@ export class MarketService {
       }
 
       // displayName 생성: 세부 정보를 최대한 살림
-      let displayName = category !== '기타' ? category : record.rawProductName.substring(0, 15);
-      if (record.species === 'PORK' && (record.rawProductName.includes('(암)') || record.rawProductName.includes('암퇘지'))) {
-        displayName += '(암)';
-      } else if (record.species === 'BEEF' && record.rawProductName.includes('(암)')) {
-        displayName += '(암)';
-      }
-      
-      if (standardizedGrade) {
-        displayName += ` ${standardizedGrade}`;
+      let displayName = '';
+      if (category !== '기타') {
+        displayName = category;
+        if (record.species === 'PORK' && (record.rawProductName.includes('(암)') || record.rawProductName.includes('암퇘지'))) {
+          displayName += '(암)';
+        } else if (record.species === 'BEEF' && record.rawProductName.includes('(암)')) {
+          displayName += '(암)';
+        }
+        
+        if (standardizedGrade) {
+          displayName += ` ${standardizedGrade}`;
+        }
+      } else {
+        // 기타 카테고리인 경우 원본 이름을 최대한 보존하되 문자열 짤림 방지
+        // 원본에 등급이 이미 있다면 추가로 붙이지 않음
+        displayName = record.rawProductName;
       }
 
       const key = `${record.species}_${record.storageType}_${category}_${displayName}`;
