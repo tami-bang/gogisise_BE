@@ -10,7 +10,23 @@ let cachedApp: any;
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   // 글로벌 CORS 허용 설정 (프론트엔드 도메인에서 쿠키를 주고받으려면 credentials: true 필요)
-  app.enableCors({ credentials: true, origin: true }); // Vercel 배포/CORS 대응을 위해 origin 동적 허용
+  // 글로벌 CORS 허용 설정 (프론트엔드 도메인에서 쿠키를 주고받으려면 credentials: true 필요)
+  app.enableCors({
+    credentials: true,
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        'http://localhost:5173',
+        'http://localhost:3000',
+      ];
+      // Vercel 배포 도메인 전체 허용 (FE 재배포 시 URL 변경 대응)
+      const isVercelDomain = origin?.endsWith('.vercel.app');
+      if (!origin || allowedOrigins.includes(origin) || isVercelDomain) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+  });
 
   // cookie-parser: req.cookies 객체를 사용할 수 있게 해주는 미들웨어
   app.use(cookieParser());

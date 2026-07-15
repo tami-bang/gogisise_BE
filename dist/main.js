@@ -8,7 +8,22 @@ const global_exception_filter_1 = require("./core/filters/global-exception.filte
 let cachedApp;
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
-    app.enableCors({ credentials: true, origin: true });
+    app.enableCors({
+        credentials: true,
+        origin: (origin, callback) => {
+            const allowedOrigins = [
+                'http://localhost:5173',
+                'http://localhost:3000',
+            ];
+            const isVercelDomain = origin?.endsWith('.vercel.app');
+            if (!origin || allowedOrigins.includes(origin) || isVercelDomain) {
+                callback(null, true);
+            }
+            else {
+                callback(new Error('Not allowed by CORS'));
+            }
+        },
+    });
     app.use(cookieParser());
     app.useGlobalFilters(new global_exception_filter_1.GlobalExceptionFilter());
     app.useGlobalPipes(new common_1.ValidationPipe({
