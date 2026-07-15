@@ -125,10 +125,13 @@ export class MarketService {
       lowestPrice: latestPrice.lowestPrice,
       participantCount: latestPrice.participantCount,
       sourceRecords: sourceRecords.map((r) => ({
-        sourceName: `${r.sourceName} - ${r.rawProductName}`, // UI에서 브랜드+부위+등급이 보이도록
+        id: r.rawRecordId,
+        sourceName: r.rawProductName.startsWith('[금천]') ? r.rawProductName : `[금천] ${r.rawProductName}`, // 원본 상품명이 그대로 보이게 매핑
         rawProductName: r.rawProductName,
         price: r.price,
         ageInMonths: r.ageInMonths,
+        collectedAt: r.collectedAt.toISOString(),
+        includedInAverage: true,
       })),
     };
   }
@@ -165,14 +168,20 @@ export class MarketService {
   /**
    * [Phase 3] 수집된 RawRecord를 MarketItem과 MarketItemPrice로 가공
    */
-  async processRawRecordsIntoMarketItems() {
-    // 1. 오늘 수집된 데이터 가져오기
-    const today = new Date();
+  async processRawRecordsIntoMarketItems(targetDate?: Date) {
+    // 1. 수집된 데이터 가져오기 (targetDate가 제공되면 해당 날짜 기준, 없으면 오늘 기준)
+    const today = targetDate ? new Date(targetDate) : new Date();
     today.setHours(0, 0, 0, 0);
+
+    const nextDay = new Date(today);
+    nextDay.setDate(today.getDate() + 1);
 
     const rawRecords = await this.prisma.rawRecord.findMany({
       where: {
-        collectedAt: { gte: today },
+        collectedAt: {
+          gte: today,
+          lt: nextDay,
+        },
       },
     });
 
@@ -202,13 +211,13 @@ export class MarketService {
         else standardizedGrade = '등외';
       }
 
-      // 카테고리 추출 (단순 휴리스틱)
+      // 카테고리 추출 (부위명 자동 분류 규칙 적용)
       let category = '기타';
-      const possibleCategories = [
-        '안심', '등심', '채끝', '삼겹', '목살', '앞다리', '전각', '뒷다리', 
-        '우둔', '설도', '사태', '양지', '갈비', '항정', '가브리', '갈매기', '치마', '부채', '업진'
-      ];
-      for (const cat of possibleCategories) {
+      const porkCategories = ['삼겹', '목심', '앞다리', '뒷다리', '등심', '안심', '갈비', '항정', '갈매기', '사태', '등뼈', '돈피', '장족'];
+      const beefCategories = ['안심', '등심', '채끝', '목심', '앞다리', '부채살', '우둔', '홍두깨', '설도', '설깃', '양지', '차돌', '업진', '사태', '갈비', '안창', '토시', '제비추리', '늑간', '우족', '사골', '꼬리'];
+      
+      const categoriesToSearch = record.species === 'BEEF' ? beefCategories : porkCategories;
+      for (const cat of categoriesToSearch) {
         if (record.rawProductName.includes(cat)) {
           category = cat;
           break;
