@@ -13,11 +13,11 @@ def valid_record(**overrides):
     values = {
         "collectedAt": datetime.datetime(2026, 7, 15, 3, 0, tzinfo=KST),
         "rawProductName": "금천한우/냉장/안심/1+",
-        "price": 38000,
+        "pricePerKg": 38000,
         "species": "BEEF",
         "storageType": "CHILLED",
         "grade": "1+",
-        "ageInMonths": 28,
+        "ageMonths": 28,
     }
     values.update(overrides)
     return RawRecord(**values)
@@ -37,13 +37,13 @@ class RawRecordContractTests(unittest.TestCase):
                 collectedAt=datetime.datetime.now(tz=datetime.timezone.utc)
             )
 
-    def test_rejects_string_price(self):
+    def test_rejects_string_pricePerKg(self):
         with self.assertRaises(ValidationError):
-            valid_record(price="38000")
+            valid_record(pricePerKg=10000, brand="test", category="test", "38000")
 
     def test_rejects_pork_age(self):
         with self.assertRaises(ValidationError):
-            valid_record(species="PORK", ageInMonths=12)
+            valid_record(species="PORK", ageMonths=12)
 
     def test_rejects_unknown_fields(self):
         with self.assertRaises(ValidationError):

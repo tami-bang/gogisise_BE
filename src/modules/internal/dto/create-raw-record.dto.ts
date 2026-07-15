@@ -37,8 +37,8 @@ function IsValidAgeForSpecies(validationOptions?: ValidationOptions) {
         },
         defaultMessage(args: ValidationArguments) {
           return (args.object as CreateRawRecordDto).species === 'PORK'
-            ? 'ageInMonths must be null for PORK'
-            : 'ageInMonths must be an integer when provided';
+            ? 'ageMonths must be null for PORK'
+            : 'ageMonths must be an integer when provided';
         },
       },
     });
@@ -62,27 +62,45 @@ export class CreateRawRecordDto {
 
   @IsInt()
   @IsPositive()
-  price: number;
+  pricePerKg: number;
 
   @IsString()
   @IsIn(['BEEF', 'PORK'])
   species: string;
 
+  @IsOptional()
+  @IsString()
+  @IsIn(['암소'])
+  gender?: string | null;
+
   @IsString()
   @IsIn(['CHILLED', 'FROZEN'])
   storageType: string;
 
+  @IsString()
+  @IsNotEmpty()
+  category: string;
+
+  @IsString()
+  @IsNotEmpty()
+  brand: string;
+
   @IsOptional()
   @IsString()
-  @MaxLength(50)
-  grade?: string | null;
+  @IsIn(['1++', '1+', '1', '2', '3', '등외'])
+  qualityGrade?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['A', 'B'])
+  yieldGrade?: string | null;
 
   @IsOptional()
   @IsInt()
   @Min(1)
   @Max(240)
   @IsValidAgeForSpecies()
-  ageInMonths?: number | null;
+  ageMonths?: number | null;
 }
 
 export class CreateRawRecordBulkDto {

@@ -14,11 +14,15 @@ export class InternalService {
           sourceName: record.sourceName,
           collectedAt: new Date(record.collectedAt),
           rawProductName: record.rawProductName,
-          price: record.price,
+          pricePerKg: record.pricePerKg,
           species: record.species,
+          gender: record.gender ?? null,
           storageType: record.storageType,
-          grade: record.grade ?? null,
-          ageInMonths: record.ageInMonths ?? null,
+          category: record.category,
+          brand: record.brand,
+          qualityGrade: record.qualityGrade ?? '',
+          yieldGrade: record.yieldGrade ?? null,
+          ageMonths: record.ageMonths ?? null,
         })),
         skipDuplicates: true, // 중복 데이터 무시 옵션 (필요시)
       });

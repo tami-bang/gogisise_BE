@@ -2,11 +2,15 @@ export declare class CreateRawRecordDto {
     sourceName: string;
     collectedAt: string;
     rawProductName: string;
-    price: number;
+    pricePerKg: number;
     species: string;
+    gender?: string | null;
     storageType: string;
-    grade?: string | null;
-    ageInMonths?: number | null;
+    category: string;
+    brand: string;
+    qualityGrade?: string | null;
+    yieldGrade?: string | null;
+    ageMonths?: number | null;
 }
 export declare class CreateRawRecordBulkDto {
     records: CreateRawRecordDto[];

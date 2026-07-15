@@ -28,8 +28,8 @@ function IsValidAgeForSpecies(validationOptions) {
                 },
                 defaultMessage(args) {
                     return args.object.species === 'PORK'
-                        ? 'ageInMonths must be null for PORK'
-                        : 'ageInMonths must be an integer when provided';
+                        ? 'ageMonths must be null for PORK'
+                        : 'ageMonths must be an integer when provided';
                 },
             },
         });
@@ -39,11 +39,15 @@ class CreateRawRecordDto {
     sourceName;
     collectedAt;
     rawProductName;
-    price;
+    pricePerKg;
     species;
+    gender;
     storageType;
-    grade;
-    ageInMonths;
+    category;
+    brand;
+    qualityGrade;
+    yieldGrade;
+    ageMonths;
 }
 exports.CreateRawRecordDto = CreateRawRecordDto;
 __decorate([
@@ -67,23 +71,45 @@ __decorate([
     (0, class_validator_1.IsInt)(),
     (0, class_validator_1.IsPositive)(),
     __metadata("design:type", Number)
-], CreateRawRecordDto.prototype, "price", void 0);
+], CreateRawRecordDto.prototype, "pricePerKg", void 0);
 __decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsIn)(['BEEF', 'PORK']),
     __metadata("design:type", String)
 ], CreateRawRecordDto.prototype, "species", void 0);
 __decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsIn)(['암소']),
+    __metadata("design:type", Object)
+], CreateRawRecordDto.prototype, "gender", void 0);
+__decorate([
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsIn)(['CHILLED', 'FROZEN']),
     __metadata("design:type", String)
 ], CreateRawRecordDto.prototype, "storageType", void 0);
 __decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], CreateRawRecordDto.prototype, "category", void 0);
+__decorate([
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsNotEmpty)(),
+    __metadata("design:type", String)
+], CreateRawRecordDto.prototype, "brand", void 0);
+__decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
-    (0, class_validator_1.MaxLength)(50),
+    (0, class_validator_1.IsIn)(['1++', '1+', '1', '2', '3', '등외']),
     __metadata("design:type", Object)
-], CreateRawRecordDto.prototype, "grade", void 0);
+], CreateRawRecordDto.prototype, "qualityGrade", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    (0, class_validator_1.IsIn)(['A', 'B']),
+    __metadata("design:type", Object)
+], CreateRawRecordDto.prototype, "yieldGrade", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsInt)(),
@@ -91,7 +117,7 @@ __decorate([
     (0, class_validator_1.Max)(240),
     IsValidAgeForSpecies(),
     __metadata("design:type", Object)
-], CreateRawRecordDto.prototype, "ageInMonths", void 0);
+], CreateRawRecordDto.prototype, "ageMonths", void 0);
 class CreateRawRecordBulkDto {
     records;
 }

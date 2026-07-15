@@ -90,116 +90,55 @@ export class MarketService {
     }
 
     // 1. 상세 페이지 필터링 로직 (Strict Filtering)
-    // DB 레벨에서 최대한 필터링을 수행하여 희귀 품목이 누락되지 않도록 함
+    // 파이썬 크롤러 단에서 이미 하드 필터링 및 카테고리 매핑이 완료되었으므로, DB 레벨에서 바로 조회 가능합니다.
     const whereCondition: any = {
       species: item.species,
       storageType: item.storageType,
+      category: item.category,
     };
 
     if (item.grade) {
-      whereCondition.grade = item.grade;
-    }
-
-    // 한우(BEEF) 암소 40개월 미만 처리 (원본 정책 유지)
-    if (item.species === 'BEEF') {
-      // 하지만 무조건 40미만이 아니라 '암소'일 때만 적용하는 것이 정확함
-      // RawRecord에서 gender 필드가 없으므로, 원본 상품명에 '암소'가 들어가는지 확인 불가능(DB레벨)
-      // 기존 코드대로 일괄 필터링 유지 (또는 메모리 필터링으로 이관)
-    }
-
-    if (item.category && item.category !== '기타') {
-      whereCondition.rawProductName = {
-        contains: item.category,
-      };
-    } else {
-      // 기타 카테고리의 경우, displayName에 원본 상품명 정보가 들어있음
-      // '/'로 구분된 경우 부위명 부분 추출 (예: 금천/냉장/꾸리살/1 -> 꾸리살)
-      const parts = item.displayName.split('/');
-      const searchKeyword = parts.length >= 3 ? parts[2] : item.displayName.substring(0, 10);
-      whereCondition.rawProductName = {
-        contains: searchKeyword.replace(/[0-9\+\s]+$/, '').trim(), // 등급부분 제거
-      };
+      whereCondition.qualityGrade = item.grade;
     }
 
     const rawRecords = await this.prisma.rawRecord.findMany({
       where: whereCondition,
       orderBy: { collectedAt: 'desc' },
-      take: 100, // DB에서 충분히 필터링된 데이터 100개 확보
+      take: 10, // 이미 정확히 매핑된 데이터이므로 10개만 가져옵니다.
     });
 
-    // 메모리에서 정밀 조건 완벽 일치 필터링
-    const strictFilteredRecords = rawRecords.filter((r) => {
-      const rawName = r.rawProductName;
-
-      // 1) 기타 카테고리 추가 검증
-      if (item.category === '기타') {
-         // 기타 카테고리인데 너무 엉뚱한게 잡히면 안되므로, 
-         // displayName의 핵심 키워드가 포함되어 있는지 확인
-         const keyword = item.displayName.split('/')[2];
-         if (keyword && !rawName.includes(keyword.replace(/[0-9\+\s]+$/, '').trim())) {
-             return false;
-         }
-      }
-
-      // 2) 등급(grade) 완벽 일치 여부 검증
-      if (item.grade) {
-        if (!rawName.includes(item.grade)) return false;
-        
-        // 등급 오작동 방지 (예: '1'등급인데 '1+'나 '1++'이 잡히는 현상 차단)
-        if (item.grade === '1') {
-          if (rawName.includes('1+') || rawName.includes('1++')) return false;
-        } else if (item.grade === '1+') {
-          if (rawName.includes('1++')) return false;
-        }
-      }
-
-      // 3) 한우(BEEF) 암소 40개월 미만 처리
-      if (item.species === 'BEEF') {
-        if (rawName.includes('암소') && r.ageInMonths && r.ageInMonths >= 40) return false;
-      }
-
-      return true;
-    }).slice(0, 10);
+    const strictFilteredRecords = rawRecords;
 
     // 2. 부위명 매핑 고도화 (Name Mapping)
-    // 원본 rawProductName에서 브랜드나 상세 특징을 살려 포맷팅
     const mappedSourceRecords = strictFilteredRecords.map((r) => {
       const rawName = r.rawProductName;
       
-      // 대괄호로 된 브랜드 추출 시도
-      let brand = '';
-      const brandMatch = rawName.match(/\[(.*?)\]/);
-      if (brandMatch) {
-        brand = `[${brandMatch[1]}]`;
-      } else {
-        // 기존 코드의 '[금천]' 처리 로직 유지
-        brand = rawName.startsWith('[') ? '' : '[금천]';
-      }
+      // DB에 깔끔하게 분리된 brand 필드 사용
+      const brand = r.brand ? `[${r.brand}]` : '';
 
       // "[브랜드] 부위명 등급" 형태로 개선
       let refinedName = '';
-      if (item.category && item.category !== '기타') {
-        refinedName = brand ? `${brand} ${item.category}` : item.category;
+      if (r.category && r.category !== '기타') {
+        refinedName = brand ? `${brand} ${r.category}` : r.category;
         
-        if (item.grade) {
-          refinedName += ` ${item.grade}`;
+        if (r.qualityGrade) {
+          refinedName += ` ${r.qualityGrade}`;
         }
 
         // 상세 특징: '(암)' 키워드가 있다면 보존
-        if (rawName.includes('(암)')) {
+        if (r.gender === '암소' || rawName.includes('(암)')) {
           refinedName += ' (암)';
         }
       } else {
-        // 기타 카테고리일 경우 최대한 원본 유지
-        refinedName = brand ? (rawName.startsWith(brand) ? rawName : `${brand} ${rawName}`) : rawName;
+        refinedName = brand ? (rawName.startsWith(r.brand) ? rawName : `${brand} ${rawName}`) : rawName;
       }
 
       return {
         id: r.rawRecordId,
         sourceName: refinedName,
         rawProductName: rawName,
-        price: r.price,
-        ageInMonths: r.ageInMonths,
+        price: r.pricePerKg,
+        ageInMonths: r.ageMonths,
         collectedAt: r.collectedAt.toISOString(),
         includedInAverage: true,
       };
@@ -273,46 +212,15 @@ export class MarketService {
     const grouped = new Map<string, any[]>();
 
     for (const record of rawRecords) {
-      // Rule 1: 한우 암소 필터링 (ageInMonths < 40)
-      if (record.species === 'BEEF') {
-        // 암소 키워드 검사 (보통 rawProductName에 '암소'가 포함됨)
-        const isCow = record.rawProductName.includes('암소');
-        if (isCow && (record.ageInMonths === null || record.ageInMonths >= 40)) {
-          continue; // 40개월 이상 또는 알 수 없는 암소는 스킵
-        }
-      }
-
-      // Rule 2: 등급 표준화
-      let standardizedGrade: string | null = null;
-      if (record.grade) {
-        if (record.grade.includes('1++')) standardizedGrade = '1++';
-        else if (record.grade.includes('1+')) standardizedGrade = '1+';
-        else if (record.grade.includes('1')) standardizedGrade = '1';
-        else if (record.grade.includes('2')) standardizedGrade = '2';
-        else if (record.grade.includes('3')) standardizedGrade = '3';
-        else standardizedGrade = '등외';
-      }
-
-      // 카테고리 추출 (부위명 자동 분류 규칙 적용)
-      let category = '기타';
-      const porkCategories = ['삼겹', '목심', '앞다리', '뒷다리', '등심', '안심', '갈비', '항정', '갈매기', '사태', '등뼈', '돈피', '장족'];
-      const beefCategories = ['안심', '등심', '채끝', '목심', '앞다리', '부채살', '우둔', '홍두깨', '설도', '설깃', '양지', '차돌', '업진', '사태', '갈비', '안창', '토시', '제비추리', '늑간', '우족', '사골', '꼬리'];
-      
-      const categoriesToSearch = record.species === 'BEEF' ? beefCategories : porkCategories;
-      for (const cat of categoriesToSearch) {
-        if (record.rawProductName.includes(cat)) {
-          category = cat;
-          break;
-        }
-      }
+      // Rule 1, 2, 카테고리 추출 등은 이미 Python 크롤러에서 완벽하게 전처리됨
+      const category = record.category;
+      const standardizedGrade = record.qualityGrade;
 
       // displayName 생성: 세부 정보를 최대한 살림
       let displayName = '';
       if (category !== '기타') {
         displayName = category;
-        if (record.species === 'PORK' && (record.rawProductName.includes('(암)') || record.rawProductName.includes('암퇘지'))) {
-          displayName += '(암)';
-        } else if (record.species === 'BEEF' && record.rawProductName.includes('(암)')) {
+        if (record.gender === '암소' || record.rawProductName.includes('(암)') || record.rawProductName.includes('암퇘지')) {
           displayName += '(암)';
         }
         
@@ -320,8 +228,6 @@ export class MarketService {
           displayName += ` ${standardizedGrade}`;
         }
       } else {
-        // 기타 카테고리인 경우 원본 이름을 최대한 보존하되 문자열 짤림 방지
-        // 원본에 등급이 이미 있다면 추가로 붙이지 않음
         displayName = record.rawProductName;
       }
 
@@ -338,8 +244,8 @@ export class MarketService {
     for (const [key, records] of grouped.entries()) {
       const first = records[0];
       
-      // 가격 계산
-      const prices = records.map(r => r.price);
+      // 가격 계산 (pricePerKg 사용)
+      const prices = records.map(r => r.pricePerKg);
       const avgPrice = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
       const maxPrice = Math.max(...prices);
       const minPrice = Math.min(...prices);

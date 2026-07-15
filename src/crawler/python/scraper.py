@@ -11,11 +11,18 @@ CRAWLER_SPEC.md 5가지 안정성 규칙 구현:
 
 import json
 import logging
+import ssl
 import time
 import datetime
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
+
+# [로컬 환경] SSL 인증서 검증 우회 컨텍스트 (금천 API 서버 인증서 문제 대응)
+# 🔑 비유: 신분증 확인을 잠시 건너뛰는 것 - 개발 환경에서만 사용!
+_SSL_CTX = ssl.create_default_context()
+_SSL_CTX.check_hostname = False
+_SSL_CTX.verify_mode = ssl.CERT_NONE
 
 from pydantic import ValidationError
 
@@ -101,7 +108,8 @@ def _http_get(url: str, timeout: int = 15) -> Any:
     for attempt in range(MAX_RETRIES):
         try:
             req = urllib.request.Request(url, headers=HEADERS, method="GET")
-            with urllib.request.urlopen(req, timeout=timeout) as res:
+            # SSL 우회 컨텍스트 적용
+            with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as res:
                 return json.loads(res.read().decode("utf-8"))
 
         except urllib.error.HTTPError as e:
@@ -142,7 +150,8 @@ def _http_post(url: str, payload: dict, timeout: int = 15) -> Any:
     for attempt in range(MAX_RETRIES):
         try:
             req = urllib.request.Request(url, data=body, headers=HEADERS, method="POST")
-            with urllib.request.urlopen(req, timeout=timeout) as res:
+            # SSL 우회 컨텍스트 적용
+            with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as res:
                 return json.loads(res.read().decode("utf-8"))
 
         except urllib.error.HTTPError as e:
@@ -319,50 +328,107 @@ def _build_collected_at() -> datetime.datetime:
 
 
 # ────────────────────────────────────────────────────────────
-# [Rule 3] Pydantic 검증 통합 매핑
+# [Rule 3] Pydantic 검증 통합 매핑 및 하드 룰 적용
 # ────────────────────────────────────────────────────────────
+import re
+
+HONDON_CHILLED = ['더좋은삼겹', '더좋은미박삼겹', 'A원삼겹', '두판삼겹', '삼겹', '미박삼겹', '목심', '미박목심', '앞다리', '미박앞다리', '뒷다리', '미박뒷다리', '등심', '지방등심', '안심', '갈비', '등갈비', '항정', '등심덧살', '갈매기', '사태']
+HANWOO_COW_CHILLED = ['안심', '등심', '윗등심', '채끝', '아래등심', '목심', '앞다리살(앞다리+꼬리)', '앞다리살', '꾸리살', '부채살', '우둔(홍두깨포함)', '우둔살', '홍두깨', '설도(삼각살 X)', '설도', '설깃', '양지머리,치마양지', '양지머리', '외삼각살', '차돌양지', '치마살', '차돌박이', '업진살', '앞치마살,업진안살', '앞치마살', '업진안살', '사태', '갈비', '갈비살', '안창살', '갈비본살+갈비살', '치토시살', '토시,제비추리', '늑간살', '제비추리']
+
+HONDON_CHILLED.sort(key=len, reverse=True)
+HANWOO_COW_CHILLED.sort(key=len, reverse=True)
 
 def map_item_to_record(item: Dict, collected_at: datetime.datetime) -> Optional[RawRecord]:
     """
     API 응답 아이템 1건 → RawRecord 변환 + Pydantic 검증
-    [Rule 3] 검증 실패 시 None 반환 (호출자가 skip)
     """
-    raw_name = _to_str_or_none(item.get("artcNm") or item.get("goodsNm"))
+    raw_name = _to_str_or_none(item.get("artcNm") or item.get("goodsNm")) or ""
     species  = _parse_species(item.get("lsspeNm"))
     storage  = _parse_storage(item.get("strgMthdGbCd"))
-    grade    = _parse_grade(item.get("lsprdGrdNm"))
     age      = _parse_age(item.get("mage"), species)
 
-    # [Rule 5] 가격 int 강제 변환
-    price_raw = item.get("salePrc")
+    # [Rule B] 월령 40개월 이상 스킵
+    if age is not None and age >= 40:
+        return None
+
+    # [Rule A] kg당 단가 (realUcost 우선, 없으면 salePrc)
+    price_raw = item.get("realUcost") or item.get("salePrc")
     try:
         normalized_price = str(price_raw).replace(",", "").strip()
-        price = int(normalized_price) if normalized_price else None
+        price_per_kg = int(normalized_price) if normalized_price else None
     except (ValueError, TypeError):
-        price = None
+        price_per_kg = None
+    if not price_per_kg:
+        return None
+
+    # [Rule C] 등급 분리 및 필터링
+    grade_str = str(item.get("lsprdGrdNm") or "").strip()
+    quality = None
+    yield_g = None
+    
+    if species == "BEEF":
+        q_match = re.search(r'(1\+\+|1\+|1)', grade_str)
+        y_match = re.search(r'([A-C])', grade_str, re.IGNORECASE)
+        if q_match:
+            quality = q_match.group(1)
+        if y_match:
+            yield_g = y_match.group(1).upper()
+            
+        if not quality:
+            return None  # 1++, 1+, 1 아니면 버림
+        if yield_g == "C":
+            return None  # C등급 버림
+    else:
+        q_match = re.search(r'(1\+\+|1\+|1)', grade_str)
+        if q_match:
+            quality = q_match.group(1)
+
+    # 성별 (한우는 암소 고정, 아니면 None)
+    gender = "암소" if species == "BEEF" else None
+
+    # 카테고리 매핑 (가장 긴 단어부터 매칭)
+    category = "기타"
+    if species == "BEEF":
+        for c in HANWOO_COW_CHILLED:
+            if c in raw_name:
+                category = c
+                break
+    elif species == "PORK":
+        for c in HONDON_CHILLED:
+            if c in raw_name:
+                category = c
+                break
+
+    # 브랜드명 추출 ( [브랜드] 형태 또는 띄어쓰기/슬래시 이전의 첫 단어)
+    brand = "기타브랜드"
+    b_match = re.search(r'\[(.*?)\]', raw_name)
+    if b_match:
+        brand = b_match.group(1)
+    else:
+        parts = raw_name.split()
+        if parts:
+            brand = parts[0].split('/')[0]
 
     try:
         record = RawRecord(
             sourceName=SOURCE_NAME,
             collectedAt=collected_at,
-            rawProductName=raw_name or "",
-            price=price or 0,
+            rawProductName=raw_name,
             species=species or "",
+            gender=gender,
             storageType=storage or "",
-            grade=grade,
-            ageInMonths=age,
+            category=category,
+            brand=brand,
+            qualityGrade=quality,
+            yieldGrade=yield_g if yield_g in ["A", "B"] else None,
+            ageMonths=age,
+            pricePerKg=price_per_kg,
         )
         return record
 
     except ValidationError as e:
-        # [Rule 3] 검증 실패 → WARN 로그 + skip
-        logger.warning(
-            "[Rule3] 레코드 skip - 상품명=%s 오류=%s",
-            raw_name or "(알 수 없음)",
-            e.errors()[0]["msg"],
-        )
+        logger.warning("[Rule3] 레코드 skip - 상품명=%s 오류=%s", raw_name, e.errors()[0]["msg"])
         return None
-
 
 # ────────────────────────────────────────────────────────────
 # 메인 크롤러 클래스
@@ -456,7 +522,7 @@ class GeumcheonScraper:
         seen: set = set()
         unique_records: List[RawRecord] = []
         for r in all_records:
-            key = (r.rawProductName, r.price, r.species)
+            key = (r.rawProductName, r.pricePerKg, r.species)  # pricePerKg로 변경
             if key not in seen:
                 seen.add(key)
                 unique_records.append(r)

@@ -60,7 +60,7 @@ let CrawlerService = CrawlerService_1 = class CrawlerService {
     async peekLatestMetadata() {
         try {
             this.logger.log('파이썬 크롤러(peek 모드) 실행 중...');
-            const { stdout } = await execAsync(`python "${this.pythonScriptPath}" --action peek`);
+            const { stdout } = await execAsync(`python3 "${this.pythonScriptPath}" --action peek`);
             const result = JSON.parse(stdout);
             if (!result.success) {
                 throw new Error(result.error);
@@ -75,7 +75,7 @@ let CrawlerService = CrawlerService_1 = class CrawlerService {
     async runFullCrawl() {
         try {
             this.logger.log('파이썬 크롤러(crawl 모드) 실행 중...');
-            const { stdout } = await execAsync(`python "${this.pythonScriptPath}" --action crawl`, { maxBuffer: 1024 * 1024 * 50 });
+            const { stdout } = await execAsync(`python3 "${this.pythonScriptPath}" --action crawl`, { maxBuffer: 1024 * 1024 * 50 });
             const result = JSON.parse(stdout);
             if (!result.success) {
                 throw new Error(result.error);

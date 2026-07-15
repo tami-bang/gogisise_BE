@@ -20,7 +20,7 @@ export class CrawlerService {
   async peekLatestMetadata(): Promise<Record<string, number>> {
     try {
       this.logger.log('파이썬 크롤러(peek 모드) 실행 중...');
-      const { stdout } = await execAsync(`python "${this.pythonScriptPath}" --action peek`);
+      const { stdout } = await execAsync(`python3 "${this.pythonScriptPath}" --action peek`);
       
       const result = JSON.parse(stdout);
       if (!result.success) {
@@ -40,7 +40,7 @@ export class CrawlerService {
     try {
       this.logger.log('파이썬 크롤러(crawl 모드) 실행 중...');
       // 최대 버퍼 사이즈 증가 (결과가 클 수 있음)
-      const { stdout } = await execAsync(`python "${this.pythonScriptPath}" --action crawl`, { maxBuffer: 1024 * 1024 * 50 });
+      const { stdout } = await execAsync(`python3 "${this.pythonScriptPath}" --action crawl`, { maxBuffer: 1024 * 1024 * 50 });
       
       const result = JSON.parse(stdout);
       if (!result.success) {

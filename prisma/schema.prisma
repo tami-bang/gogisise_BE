@@ -5,8 +5,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")  // DDL 마이그레이션용 직접 연결
 }
 
 model RawRecord {
@@ -14,15 +15,19 @@ model RawRecord {
   sourceName     String   @db.VarChar
   collectedAt    DateTime @db.Timestamp(6)
   rawProductName String   @db.VarChar
-  price          Int      @db.Integer
   species        String   @db.VarChar
+  gender         String?  @db.VarChar
   storageType    String   @db.VarChar
-  grade          String?  @db.VarChar
-  ageInMonths    Int?     @db.Integer
+  category       String   @db.VarChar
+  brand          String   @db.VarChar
+  qualityGrade   String   @db.VarChar
+  yieldGrade     String?  @db.VarChar
+  ageMonths      Int?     @db.Integer
+  pricePerKg     Int      @db.Integer
   createdAt      DateTime @default(now()) @db.Timestamp(6)
 
   // Retrying the exact same crawl payload must not create duplicate rows.
-  @@unique([sourceName, collectedAt, rawProductName, price, species, storageType], map: "uk_raw_records_ingestion")
+  @@unique([sourceName, collectedAt, rawProductName, pricePerKg, species, storageType], map: "uk_raw_records_ingestion")
   @@map("Raw_Records")
 }
 

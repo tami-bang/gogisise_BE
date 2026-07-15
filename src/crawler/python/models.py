@@ -26,11 +26,15 @@ class RawRecord(ContractModel):
     sourceName: Literal["GEUMCHEON"] = "GEUMCHEON"
     collectedAt: datetime
     rawProductName: str = Field(min_length=1, max_length=500)
-    price: int = Field(gt=0, strict=True)
     species: Literal["BEEF", "PORK"]
+    gender: Literal["암소"] | None = None
     storageType: Literal["CHILLED", "FROZEN"]
-    grade: str | None = Field(default=None, max_length=50)
-    ageInMonths: int | None = Field(default=None, ge=1, le=240, strict=True)
+    category: str = Field(min_length=1)
+    brand: str = Field(min_length=1)
+    qualityGrade: Literal["1++", "1+", "1", "2", "3", "등외"] | None = None
+    yieldGrade: Literal["A", "B"] | None = None
+    ageMonths: int | None = Field(default=None, ge=1, le=240)
+    pricePerKg: int = Field(gt=0, strict=True)
 
     @field_validator("collectedAt")
     @classmethod
@@ -41,15 +45,10 @@ class RawRecord(ContractModel):
             raise ValueError("collectedAt must use the +09:00 KST offset")
         return value
 
-    @field_validator("grade")
-    @classmethod
-    def normalize_empty_grade(cls, value: str | None) -> str | None:
-        return value or None
-
     @model_validator(mode="after")
     def validate_species_age(self) -> "RawRecord":
-        if self.species == "PORK" and self.ageInMonths is not None:
-            raise ValueError("ageInMonths must be null for PORK")
+        if self.species == "PORK" and self.ageMonths is not None:
+            raise ValueError("ageMonths must be null for PORK")
         return self
 
 

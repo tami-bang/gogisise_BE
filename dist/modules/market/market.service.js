@@ -84,31 +84,42 @@ let MarketService = class MarketService {
         const whereCondition = {
             species: item.species,
             storageType: item.storageType,
+            category: item.category,
         };
         if (item.grade) {
-            whereCondition.grade = item.grade;
+            whereCondition.qualityGrade = item.grade;
         }
-        if (item.species === 'BEEF') {
-            whereCondition.ageInMonths = { lt: 40 };
-        }
-        if (item.category && item.category !== '기타') {
-            whereCondition.rawProductName = {
-                contains: item.category,
-            };
-        }
-        else {
-            let prefix = item.displayName;
-            if (item.grade && prefix.endsWith(` ${item.grade}`)) {
-                prefix = prefix.substring(0, prefix.length - (item.grade.length + 1));
-            }
-            whereCondition.rawProductName = {
-                startsWith: prefix,
-            };
-        }
-        const sourceRecords = await this.prisma.rawRecord.findMany({
+        const rawRecords = await this.prisma.rawRecord.findMany({
             where: whereCondition,
             orderBy: { collectedAt: 'desc' },
             take: 10,
+        });
+        const strictFilteredRecords = rawRecords;
+        const mappedSourceRecords = strictFilteredRecords.map((r) => {
+            const rawName = r.rawProductName;
+            const brand = r.brand ? `[${r.brand}]` : '';
+            let refinedName = '';
+            if (r.category && r.category !== '기타') {
+                refinedName = brand ? `${brand} ${r.category}` : r.category;
+                if (r.qualityGrade) {
+                    refinedName += ` ${r.qualityGrade}`;
+                }
+                if (r.gender === '암소' || rawName.includes('(암)')) {
+                    refinedName += ' (암)';
+                }
+            }
+            else {
+                refinedName = brand ? (rawName.startsWith(r.brand) ? rawName : `${brand} ${rawName}`) : rawName;
+            }
+            return {
+                id: r.rawRecordId,
+                sourceName: refinedName,
+                rawProductName: rawName,
+                price: r.pricePerKg,
+                ageInMonths: r.ageMonths,
+                collectedAt: r.collectedAt.toISOString(),
+                includedInAverage: true,
+            };
         });
         return {
             itemId: item.itemId,
@@ -119,15 +130,7 @@ let MarketService = class MarketService {
             highestPrice: latestPrice.highestPrice,
             lowestPrice: latestPrice.lowestPrice,
             participantCount: latestPrice.participantCount,
-            sourceRecords: sourceRecords.map((r) => ({
-                id: r.rawRecordId,
-                sourceName: r.rawProductName.startsWith('[금천]') ? r.rawProductName : `[금천] ${r.rawProductName}`,
-                rawProductName: r.rawProductName,
-                price: r.price,
-                ageInMonths: r.ageInMonths,
-                collectedAt: r.collectedAt.toISOString(),
-                includedInAverage: true,
-            })),
+            sourceRecords: mappedSourceRecords,
         };
     }
     async getItemPriceHistory(itemId) {
@@ -169,46 +172,20 @@ let MarketService = class MarketService {
             return;
         const grouped = new Map();
         for (const record of rawRecords) {
-            if (record.species === 'BEEF') {
-                const isCow = record.rawProductName.includes('암소');
-                if (isCow && (record.ageInMonths === null || record.ageInMonths >= 40)) {
-                    continue;
+            const category = record.category;
+            const standardizedGrade = record.qualityGrade;
+            let displayName = '';
+            if (category !== '기타') {
+                displayName = category;
+                if (record.gender === '암소' || record.rawProductName.includes('(암)') || record.rawProductName.includes('암퇘지')) {
+                    displayName += '(암)';
+                }
+                if (standardizedGrade) {
+                    displayName += ` ${standardizedGrade}`;
                 }
             }
-            let standardizedGrade = null;
-            if (record.grade) {
-                if (record.grade.includes('1++'))
-                    standardizedGrade = '1++';
-                else if (record.grade.includes('1+'))
-                    standardizedGrade = '1+';
-                else if (record.grade.includes('1'))
-                    standardizedGrade = '1';
-                else if (record.grade.includes('2'))
-                    standardizedGrade = '2';
-                else if (record.grade.includes('3'))
-                    standardizedGrade = '3';
-                else
-                    standardizedGrade = '등외';
-            }
-            let category = '기타';
-            const porkCategories = ['삼겹', '목심', '앞다리', '뒷다리', '등심', '안심', '갈비', '항정', '갈매기', '사태', '등뼈', '돈피', '장족'];
-            const beefCategories = ['안심', '등심', '채끝', '목심', '앞다리', '부채살', '우둔', '홍두깨', '설도', '설깃', '양지', '차돌', '업진', '사태', '갈비', '안창', '토시', '제비추리', '늑간', '우족', '사골', '꼬리'];
-            const categoriesToSearch = record.species === 'BEEF' ? beefCategories : porkCategories;
-            for (const cat of categoriesToSearch) {
-                if (record.rawProductName.includes(cat)) {
-                    category = cat;
-                    break;
-                }
-            }
-            let displayName = category !== '기타' ? category : record.rawProductName.substring(0, 15);
-            if (record.species === 'PORK' && (record.rawProductName.includes('(암)') || record.rawProductName.includes('암퇘지'))) {
-                displayName += '(암)';
-            }
-            else if (record.species === 'BEEF' && record.rawProductName.includes('(암)')) {
-                displayName += '(암)';
-            }
-            if (standardizedGrade) {
-                displayName += ` ${standardizedGrade}`;
+            else {
+                displayName = record.rawProductName;
             }
             const key = `${record.species}_${record.storageType}_${category}_${displayName}`;
             if (!grouped.has(key)) {
@@ -219,7 +196,7 @@ let MarketService = class MarketService {
         const marketDate = today;
         for (const [key, records] of grouped.entries()) {
             const first = records[0];
-            const prices = records.map(r => r.price);
+            const prices = records.map(r => r.pricePerKg);
             const avgPrice = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
             const maxPrice = Math.max(...prices);
             const minPrice = Math.min(...prices);
