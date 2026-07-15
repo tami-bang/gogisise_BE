@@ -48,4 +48,5 @@ export declare class MarketService {
             price: number | null;
         }[];
     }>;
+    processRawRecordsIntoMarketItems(): Promise<void>;
 }

@@ -1,61 +1,94 @@
 import {
-  IsString,
-  IsInt,
-  IsOptional,
-  IsArray,
-  ValidateNested,
+  ArrayMaxSize,
+  ArrayMinSize,
   Equals,
+  IsArray,
   IsDateString,
   IsIn,
-  ValidateIf,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsPositive,
+  IsString,
+  Max,
+  MaxLength,
+  Matches,
+  Min,
+  registerDecorator,
+  ValidateNested,
+  ValidationArguments,
+  ValidationOptions,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+function IsValidAgeForSpecies(validationOptions?: ValidationOptions) {
+  return function (object: object, propertyName: string) {
+    registerDecorator({
+      name: 'isValidAgeForSpecies',
+      target: object.constructor,
+      propertyName,
+      options: validationOptions,
+      validator: {
+        validate(value: unknown, args: ValidationArguments) {
+          const species = (args.object as CreateRawRecordDto).species;
+          return species === 'PORK'
+            ? value == null
+            : value == null || Number.isInteger(value);
+        },
+        defaultMessage(args: ValidationArguments) {
+          return (args.object as CreateRawRecordDto).species === 'PORK'
+            ? 'ageInMonths must be null for PORK'
+            : 'ageInMonths must be an integer when provided';
+        },
+      },
+    });
+  };
+}
+
 export class CreateRawRecordDto {
   @IsString()
-  @Equals('GEUMCHEON', {
-    message: 'sourceName은 반드시 GEUMCHEON 이어야 합니다.',
-  })
+  @Equals('GEUMCHEON')
   sourceName: string;
 
-  @IsDateString(
-    {},
-    { message: 'collectedAt은 유효한 ISO 8601 날짜 문자열이어야 합니다.' },
-  )
+  @IsDateString({}, { message: 'collectedAt must be a valid ISO 8601 timestamp' })
+  @Matches(/\+09:00$/, { message: 'collectedAt must use the +09:00 KST offset' })
   collectedAt: string;
 
   @IsString()
+  @IsNotEmpty()
+  @Matches(/\S/, { message: 'rawProductName must contain a non-space character' })
+  @MaxLength(500)
   rawProductName: string;
 
   @IsInt()
+  @IsPositive()
   price: number;
 
   @IsString()
-  @IsIn(['BEEF', 'PORK'], {
-    message: 'species는 BEEF 또는 PORK 중 하나여야 합니다.',
-  })
+  @IsIn(['BEEF', 'PORK'])
   species: string;
 
   @IsString()
-  @IsIn(['CHILLED', 'FROZEN'], {
-    message: 'storageType은 CHILLED 또는 FROZEN 중 하나여야 합니다.',
-  })
+  @IsIn(['CHILLED', 'FROZEN'])
   storageType: string;
 
   @IsOptional()
   @IsString()
-  grade?: string;
+  @MaxLength(50)
+  grade?: string | null;
 
-  // species가 BEEF일 경우 ageInMonths는 필수 (정수형)
-  @ValidateIf((o) => o.species === 'BEEF')
-  @IsInt({
-    message: '한우(BEEF)의 경우 ageInMonths(월령)는 필수 정수여야 합니다.',
-  })
-  ageInMonths?: number;
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(240)
+  @IsValidAgeForSpecies()
+  ageInMonths?: number | null;
 }
 
 export class CreateRawRecordBulkDto {
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
   @ValidateNested({ each: true })
   @Type(() => CreateRawRecordDto)
   records: CreateRawRecordDto[];

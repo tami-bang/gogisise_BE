@@ -161,4 +161,167 @@ export class MarketService {
       })),
     };
   }
+
+  /**
+   * [Phase 3] 수집된 RawRecord를 MarketItem과 MarketItemPrice로 가공
+   */
+  async processRawRecordsIntoMarketItems() {
+    // 1. 오늘 수집된 데이터 가져오기
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const rawRecords = await this.prisma.rawRecord.findMany({
+      where: {
+        collectedAt: { gte: today },
+      },
+    });
+
+    if (rawRecords.length === 0) return;
+
+    // 2. 종별/부위별/등급별로 그룹핑
+    const grouped = new Map<string, any[]>();
+
+    for (const record of rawRecords) {
+      // Rule 1: 한우 암소 필터링 (ageInMonths < 40)
+      if (record.species === 'BEEF') {
+        // 암소 키워드 검사 (보통 rawProductName에 '암소'가 포함됨)
+        const isCow = record.rawProductName.includes('암소');
+        if (isCow && (record.ageInMonths === null || record.ageInMonths >= 40)) {
+          continue; // 40개월 이상 또는 알 수 없는 암소는 스킵
+        }
+      }
+
+      // Rule 2: 등급 표준화
+      let standardizedGrade: string | null = null;
+      if (record.grade) {
+        if (record.grade.includes('1++')) standardizedGrade = '1++';
+        else if (record.grade.includes('1+')) standardizedGrade = '1+';
+        else if (record.grade.includes('1')) standardizedGrade = '1';
+        else if (record.grade.includes('2')) standardizedGrade = '2';
+        else if (record.grade.includes('3')) standardizedGrade = '3';
+        else standardizedGrade = '등외';
+      }
+
+      // 카테고리 추출 (단순 휴리스틱)
+      let category = '기타';
+      const nameParts = record.rawProductName.split(' ');
+      const possibleCategories = ['안심', '등심', '채끝', '삼겹', '목살', '앞다리', '뒷다리', '갈비', '항정', '가브리', '갈매기'];
+      for (const cat of possibleCategories) {
+        if (record.rawProductName.includes(cat)) {
+          category = cat;
+          break;
+        }
+      }
+
+      // displayName 생성 및 PORK 암퇘지 접미사 처리
+      let displayName = category;
+      if (record.species === 'PORK' && (record.rawProductName.includes('(암)') || record.rawProductName.includes('암퇘지'))) {
+        displayName = `${category}(암)`;
+      }
+      if (standardizedGrade) {
+        displayName += ` ${standardizedGrade}`;
+      }
+
+      const key = `${record.species}_${record.storageType}_${category}_${displayName}`;
+      if (!grouped.has(key)) {
+        grouped.set(key, []);
+      }
+      grouped.get(key)!.push({ ...record, standardizedGrade, category, displayName });
+    }
+
+    // 3. MarketItem 및 Price Upsert
+    const marketDate = today;
+
+    for (const [key, records] of grouped.entries()) {
+      const first = records[0];
+      
+      // 가격 계산
+      const prices = records.map(r => r.price);
+      const avgPrice = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
+      const maxPrice = Math.max(...prices);
+      const minPrice = Math.min(...prices);
+
+      // searchKeywords 생성 (초성 변환은 생략하고 핵심 핀포인트 로직만 구현)
+      const keywords = new Set<string>();
+      keywords.add(first.category);
+      if (first.displayName.includes('(암)')) {
+        keywords.add(`${first.category}암`);
+        keywords.add(`${first.category}(암)`);
+        keywords.add(`${first.category}살암`);
+        keywords.add('ㅅㄱㅇ'); // 예시 하드코딩 (실제론 초성변환기 필요)
+      }
+      if (first.standardizedGrade) {
+        const g = first.standardizedGrade;
+        keywords.add(`${first.category}${g}`);
+        if (g === '1++') {
+          keywords.add(`1pp`);
+          keywords.add(`1PP`);
+          keywords.add(`${first.category}1pp`);
+        }
+      }
+
+      const searchKeywords = Array.from(keywords).join(' ');
+
+      // MarketItem 생성/업데이트
+      const marketItem = await this.prisma.marketItem.upsert({
+        where: { itemId: key }, // itemId를 식별자로 사용 (단순화)
+        update: { searchKeywords, displayName: first.displayName, grade: first.standardizedGrade },
+        create: {
+          itemId: key,
+          species: first.species,
+          storageType: first.storageType,
+          category: first.category,
+          displayName: first.displayName,
+          searchKeywords,
+          grade: first.standardizedGrade,
+        }
+      });
+
+      // 전일 가격 조회 (어제 데이터)
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+
+      const prevPrice = await this.prisma.marketItemPrice.findFirst({
+        where: { itemId: marketItem.itemId, marketDate: yesterday },
+      });
+
+      let changeAmount: number | null = null;
+      let trendStatus: string | null = null;
+      if (prevPrice && prevPrice.price) {
+        changeAmount = avgPrice - prevPrice.price;
+        if (changeAmount > 0) trendStatus = 'UP';
+        else if (changeAmount < 0) trendStatus = 'DOWN';
+        else trendStatus = 'UNCHANGED';
+      }
+
+      await this.prisma.marketItemPrice.upsert({
+        where: {
+          itemId_marketDate: {
+            itemId: marketItem.itemId,
+            marketDate: marketDate,
+          }
+        },
+        update: {
+          price: avgPrice,
+          previousPrice: prevPrice ? prevPrice.price : null,
+          changeAmount,
+          trendStatus,
+          highestPrice: maxPrice,
+          lowestPrice: minPrice,
+          participantCount: records.length,
+        },
+        create: {
+          itemId: marketItem.itemId,
+          marketDate: marketDate,
+          price: avgPrice,
+          previousPrice: prevPrice ? prevPrice.price : null,
+          changeAmount,
+          trendStatus,
+          highestPrice: maxPrice,
+          lowestPrice: minPrice,
+          participantCount: records.length,
+        }
+      });
+    }
+  }
 }

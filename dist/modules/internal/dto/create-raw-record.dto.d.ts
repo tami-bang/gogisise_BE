@@ -5,8 +5,8 @@ export declare class CreateRawRecordDto {
     price: number;
     species: string;
     storageType: string;
-    grade?: string;
-    ageInMonths?: number;
+    grade?: string | null;
+    ageInMonths?: number | null;
 }
 export declare class CreateRawRecordBulkDto {
     records: CreateRawRecordDto[];

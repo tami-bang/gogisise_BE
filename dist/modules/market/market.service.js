@@ -135,6 +135,145 @@ let MarketService = class MarketService {
             })),
         };
     }
+    async processRawRecordsIntoMarketItems() {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const rawRecords = await this.prisma.rawRecord.findMany({
+            where: {
+                collectedAt: { gte: today },
+            },
+        });
+        if (rawRecords.length === 0)
+            return;
+        const grouped = new Map();
+        for (const record of rawRecords) {
+            if (record.species === 'BEEF') {
+                const isCow = record.rawProductName.includes('암소');
+                if (isCow && (record.ageInMonths === null || record.ageInMonths >= 40)) {
+                    continue;
+                }
+            }
+            let standardizedGrade = null;
+            if (record.grade) {
+                if (record.grade.includes('1++'))
+                    standardizedGrade = '1++';
+                else if (record.grade.includes('1+'))
+                    standardizedGrade = '1+';
+                else if (record.grade.includes('1'))
+                    standardizedGrade = '1';
+                else if (record.grade.includes('2'))
+                    standardizedGrade = '2';
+                else if (record.grade.includes('3'))
+                    standardizedGrade = '3';
+                else
+                    standardizedGrade = '등외';
+            }
+            let category = '기타';
+            const nameParts = record.rawProductName.split(' ');
+            const possibleCategories = ['안심', '등심', '채끝', '삼겹', '목살', '앞다리', '뒷다리', '갈비', '항정', '가브리', '갈매기'];
+            for (const cat of possibleCategories) {
+                if (record.rawProductName.includes(cat)) {
+                    category = cat;
+                    break;
+                }
+            }
+            let displayName = category;
+            if (record.species === 'PORK' && (record.rawProductName.includes('(암)') || record.rawProductName.includes('암퇘지'))) {
+                displayName = `${category}(암)`;
+            }
+            if (standardizedGrade) {
+                displayName += ` ${standardizedGrade}`;
+            }
+            const key = `${record.species}_${record.storageType}_${category}_${displayName}`;
+            if (!grouped.has(key)) {
+                grouped.set(key, []);
+            }
+            grouped.get(key).push({ ...record, standardizedGrade, category, displayName });
+        }
+        const marketDate = today;
+        for (const [key, records] of grouped.entries()) {
+            const first = records[0];
+            const prices = records.map(r => r.price);
+            const avgPrice = Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
+            const maxPrice = Math.max(...prices);
+            const minPrice = Math.min(...prices);
+            const keywords = new Set();
+            keywords.add(first.category);
+            if (first.displayName.includes('(암)')) {
+                keywords.add(`${first.category}암`);
+                keywords.add(`${first.category}(암)`);
+                keywords.add(`${first.category}살암`);
+                keywords.add('ㅅㄱㅇ');
+            }
+            if (first.standardizedGrade) {
+                const g = first.standardizedGrade;
+                keywords.add(`${first.category}${g}`);
+                if (g === '1++') {
+                    keywords.add(`1pp`);
+                    keywords.add(`1PP`);
+                    keywords.add(`${first.category}1pp`);
+                }
+            }
+            const searchKeywords = Array.from(keywords).join(' ');
+            const marketItem = await this.prisma.marketItem.upsert({
+                where: { itemId: key },
+                update: { searchKeywords, displayName: first.displayName, grade: first.standardizedGrade },
+                create: {
+                    itemId: key,
+                    species: first.species,
+                    storageType: first.storageType,
+                    category: first.category,
+                    displayName: first.displayName,
+                    searchKeywords,
+                    grade: first.standardizedGrade,
+                }
+            });
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            const prevPrice = await this.prisma.marketItemPrice.findFirst({
+                where: { itemId: marketItem.itemId, marketDate: yesterday },
+            });
+            let changeAmount = null;
+            let trendStatus = null;
+            if (prevPrice && prevPrice.price) {
+                changeAmount = avgPrice - prevPrice.price;
+                if (changeAmount > 0)
+                    trendStatus = 'UP';
+                else if (changeAmount < 0)
+                    trendStatus = 'DOWN';
+                else
+                    trendStatus = 'UNCHANGED';
+            }
+            await this.prisma.marketItemPrice.upsert({
+                where: {
+                    itemId_marketDate: {
+                        itemId: marketItem.itemId,
+                        marketDate: marketDate,
+                    }
+                },
+                update: {
+                    price: avgPrice,
+                    previousPrice: prevPrice ? prevPrice.price : null,
+                    changeAmount,
+                    trendStatus,
+                    highestPrice: maxPrice,
+                    lowestPrice: minPrice,
+                    participantCount: records.length,
+                },
+                create: {
+                    itemId: marketItem.itemId,
+                    marketDate: marketDate,
+                    price: avgPrice,
+                    previousPrice: prevPrice ? prevPrice.price : null,
+                    changeAmount,
+                    trendStatus,
+                    highestPrice: maxPrice,
+                    lowestPrice: minPrice,
+                    participantCount: records.length,
+                }
+            });
+        }
+    }
 };
 exports.MarketService = MarketService;
 exports.MarketService = MarketService = __decorate([

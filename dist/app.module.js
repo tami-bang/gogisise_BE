@@ -18,6 +18,8 @@ const internal_module_1 = require("./modules/internal/internal.module");
 const analytics_module_1 = require("./modules/analytics/analytics.module");
 const prisma_module_1 = require("./core/prisma/prisma.module");
 const redis_module_1 = require("./core/redis/redis.module");
+const crawler_module_1 = require("./modules/crawler/crawler.module");
+const tasks_module_1 = require("./modules/tasks/tasks.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -32,6 +34,8 @@ exports.AppModule = AppModule = __decorate([
             market_module_1.MarketModule,
             internal_module_1.InternalModule,
             analytics_module_1.AnalyticsModule,
+            crawler_module_1.CrawlerModule,
+            tasks_module_1.TasksModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],

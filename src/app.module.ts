@@ -9,6 +9,8 @@ import { InternalModule } from './modules/internal/internal.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { PrismaModule } from './core/prisma/prisma.module';
 import { RedisModule } from './core/redis/redis.module'; // Redis 전역 모듈 추가
+import { CrawlerModule } from './modules/crawler/crawler.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { RedisModule } from './core/redis/redis.module'; // Redis 전역 모듈 
     MarketModule,
     InternalModule,
     AnalyticsModule,
+    CrawlerModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [AppService],

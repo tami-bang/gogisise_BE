@@ -21,6 +21,8 @@ model RawRecord {
   ageInMonths    Int?     @db.Integer
   createdAt      DateTime @default(now()) @db.Timestamp(6)
 
+  // Retrying the exact same crawl payload must not create duplicate rows.
+  @@unique([sourceName, collectedAt, rawProductName, price, species, storageType], map: "uk_raw_records_ingestion")
   @@map("Raw_Records")
 }
 
@@ -132,4 +134,13 @@ model UserViewsLog {
   // 파티셔닝 테이블의 특성상 파티션 키(viewedAt)가 PK에 포함되어야 함
   @@id([logId, viewedAt])
   @@map("User_Views_Log")
+}
+
+model CrawlerMetadata {
+  id              Int      @id @default(1)
+  lastTotalCounts Json     @db.JsonB
+  lastCheckedAt   DateTime @default(now()) @db.Timestamp(6)
+  lastUpdatedAt   DateTime @default(now()) @db.Timestamp(6)
+
+  @@map("Crawler_Metadata")
 }

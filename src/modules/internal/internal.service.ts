@@ -17,8 +17,8 @@ export class InternalService {
           price: record.price,
           species: record.species,
           storageType: record.storageType,
-          grade: record.grade || null,
-          ageInMonths: record.ageInMonths || null,
+          grade: record.grade ?? null,
+          ageInMonths: record.ageInMonths ?? null,
         })),
         skipDuplicates: true, // 중복 데이터 무시 옵션 (필요시)
       });
