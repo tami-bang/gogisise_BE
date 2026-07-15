@@ -125,7 +125,7 @@ export class MarketService {
       lowestPrice: latestPrice.lowestPrice,
       participantCount: latestPrice.participantCount,
       sourceRecords: sourceRecords.map((r) => ({
-        sourceName: r.sourceName,
+        sourceName: `${r.sourceName} - ${r.rawProductName}`, // UI에서 브랜드+부위+등급이 보이도록
         rawProductName: r.rawProductName,
         price: r.price,
         ageInMonths: r.ageInMonths,
@@ -204,8 +204,10 @@ export class MarketService {
 
       // 카테고리 추출 (단순 휴리스틱)
       let category = '기타';
-      const nameParts = record.rawProductName.split(' ');
-      const possibleCategories = ['안심', '등심', '채끝', '삼겹', '목살', '앞다리', '뒷다리', '갈비', '항정', '가브리', '갈매기'];
+      const possibleCategories = [
+        '안심', '등심', '채끝', '삼겹', '목살', '앞다리', '전각', '뒷다리', 
+        '우둔', '설도', '사태', '양지', '갈비', '항정', '가브리', '갈매기', '치마', '부채', '업진'
+      ];
       for (const cat of possibleCategories) {
         if (record.rawProductName.includes(cat)) {
           category = cat;
@@ -213,11 +215,14 @@ export class MarketService {
         }
       }
 
-      // displayName 생성 및 PORK 암퇘지 접미사 처리
-      let displayName = category;
+      // displayName 생성: 세부 정보를 최대한 살림
+      let displayName = category !== '기타' ? category : record.rawProductName.substring(0, 15);
       if (record.species === 'PORK' && (record.rawProductName.includes('(암)') || record.rawProductName.includes('암퇘지'))) {
-        displayName = `${category}(암)`;
+        displayName += '(암)';
+      } else if (record.species === 'BEEF' && record.rawProductName.includes('(암)')) {
+        displayName += '(암)';
       }
+      
       if (standardizedGrade) {
         displayName += ` ${standardizedGrade}`;
       }
