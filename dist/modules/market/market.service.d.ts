@@ -32,10 +32,13 @@ export declare class MarketService {
         lowestPrice: number | null;
         participantCount: number | null;
         sourceRecords: {
+            id: string;
             sourceName: string;
             rawProductName: string;
             price: number;
             ageInMonths: number | null;
+            collectedAt: string;
+            includedInAverage: boolean;
         }[];
     }>;
     getItemPriceHistory(itemId: string): Promise<{
@@ -48,5 +51,5 @@ export declare class MarketService {
             price: number | null;
         }[];
     }>;
-    processRawRecordsIntoMarketItems(): Promise<void>;
+    processRawRecordsIntoMarketItems(targetDate?: Date): Promise<void>;
 }

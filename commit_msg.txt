@@ -1,4 +1,0 @@
-📝 docs: API 명세 요약 문서 추가
-
-- [문서 추가]: 구현된 전체 API 요약을 포함하는 Api_summary.md 파일 추가
-- [상세 내용]: Market, Users, Internal, Auth, Analytics 기능의 URL, Method, DTO 예시 포함

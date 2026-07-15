@@ -89,30 +89,94 @@ export class MarketService {
       );
     }
 
-    // 산출 근거를 위한 RawRecord 검색
-    // 원본 데이터가 쌓인 날짜와 동일한 데이터 중 조건 일치 항목
-    // [중요 로직] 한우(BEEF)의 경우 ageInMonths < 40 필터링 필수
-    const whereCondition: any = {
-      species: item.species,
-      storageType: item.storageType,
-    };
-
-    if (item.grade) {
-      whereCondition.grade = item.grade;
-    }
-
-    if (item.species === 'BEEF') {
-      whereCondition.ageInMonths = { lt: 40 }; // 40개월 미만 필수 필터
-    }
-
-    // 이 부분은 당일 들어온 RawRecord를 기준으로 가져온다고 가정
-    // 실제 운영 환경에서는 collectedAt의 날짜가 marketDate와 일치하는 조건이 추가됨.
-    // 여기서는 가장 최근 적재된 데이터를 최신 기준으로 가져온다고 단순화.
-
-    const sourceRecords = await this.prisma.rawRecord.findMany({
-      where: whereCondition,
+    // 1. 상세 페이지 필터링 로직 (Strict Filtering)
+    // 데이터베이스 조회 시 일차적으로 축종, 보관상태 필터링을 거치고 넉넉히 가져옴
+    const rawRecords = await this.prisma.rawRecord.findMany({
+      where: {
+        species: item.species,
+        storageType: item.storageType,
+      },
       orderBy: { collectedAt: 'desc' },
-      take: 10, // 화면 표시를 위해 상위 10개만 리밋
+      take: 200, // 충분한 수량을 가져와서 메모리에서 완벽 일치 검사
+    });
+
+    // 메모리에서 4가지 조건(축종, 보관상태, 카테고리, 등급) 완벽 일치 필터링
+    const strictFilteredRecords = rawRecords.filter((r) => {
+      // 1) 축종 재검증
+      if (r.species !== item.species) return false;
+      // 2) 보관상태 재검증
+      if (r.storageType !== item.storageType) return false;
+
+      const rawName = r.rawProductName;
+
+      // 3) 카테고리(부위명) 완벽 포함 여부
+      // 안심을 찾을 때 등심이 섞이지 않도록 처리 (단순 contains 방지)
+      if (item.category && item.category !== '기타') {
+        if (!rawName.includes(item.category)) return false;
+      }
+
+      // 4) 등급(grade) 완벽 일치 여부
+      if (item.grade) {
+        if (!rawName.includes(item.grade)) return false;
+        
+        // 등급 오작동 방지 (예: '1'등급인데 '1+'나 '1++'이 잡히는 현상 차단)
+        if (item.grade === '1') {
+          if (rawName.includes('1+') || rawName.includes('1++')) return false;
+        } else if (item.grade === '1+') {
+          if (rawName.includes('1++')) return false;
+        }
+      }
+
+      // 5) 한우(BEEF)의 경우 암소 40개월 미만 처리 (원본 정책 유지)
+      if (item.species === 'BEEF') {
+        if (r.ageInMonths && r.ageInMonths >= 40) return false;
+      }
+
+      return true;
+    }).slice(0, 10);
+
+    // 2. 부위명 매핑 고도화 (Name Mapping)
+    // 원본 rawProductName에서 브랜드나 상세 특징을 살려 포맷팅
+    const mappedSourceRecords = strictFilteredRecords.map((r) => {
+      const rawName = r.rawProductName;
+      
+      // 대괄호로 된 브랜드 추출 시도
+      let brand = '';
+      const brandMatch = rawName.match(/\[(.*?)\]/);
+      if (brandMatch) {
+        brand = `[${brandMatch[1]}]`;
+      } else {
+        // 기존 코드의 '[금천]' 처리 로직 유지
+        brand = rawName.startsWith('[') ? '' : '[금천]';
+      }
+
+      // "[브랜드] 부위명 등급" 형태로 개선
+      let refinedName = '';
+      if (item.category && item.category !== '기타') {
+        refinedName = brand ? `${brand} ${item.category}` : item.category;
+        
+        if (item.grade) {
+          refinedName += ` ${item.grade}`;
+        }
+
+        // 상세 특징: '(암)' 키워드가 있다면 보존
+        if (rawName.includes('(암)')) {
+          refinedName += ' (암)';
+        }
+      } else {
+        // 기타 카테고리일 경우 최대한 원본 유지
+        refinedName = brand ? (rawName.startsWith(brand) ? rawName : `${brand} ${rawName}`) : rawName;
+      }
+
+      return {
+        id: r.rawRecordId,
+        sourceName: refinedName,
+        rawProductName: rawName,
+        price: r.price,
+        ageInMonths: r.ageInMonths,
+        collectedAt: r.collectedAt.toISOString(),
+        includedInAverage: true,
+      };
     });
 
     return {
@@ -124,15 +188,7 @@ export class MarketService {
       highestPrice: latestPrice.highestPrice,
       lowestPrice: latestPrice.lowestPrice,
       participantCount: latestPrice.participantCount,
-      sourceRecords: sourceRecords.map((r) => ({
-        id: r.rawRecordId,
-        sourceName: r.rawProductName.startsWith('[금천]') ? r.rawProductName : `[금천] ${r.rawProductName}`, // 원본 상품명이 그대로 보이게 매핑
-        rawProductName: r.rawProductName,
-        price: r.price,
-        ageInMonths: r.ageInMonths,
-        collectedAt: r.collectedAt.toISOString(),
-        includedInAverage: true,
-      })),
+      sourceRecords: mappedSourceRecords, // 새롭게 매핑된 데이터 반환
     };
   }
 

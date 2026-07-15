@@ -41,10 +41,13 @@ export declare class MarketController {
             lowestPrice: number | null;
             participantCount: number | null;
             sourceRecords: {
+                id: string;
                 sourceName: string;
                 rawProductName: string;
                 price: number;
                 ageInMonths: number | null;
+                collectedAt: string;
+                includedInAverage: boolean;
             }[];
         };
         meta: {

@@ -17,6 +17,7 @@ exports.InternalModule = InternalModule = __decorate([
     (0, common_1.Module)({
         controllers: [internal_controller_1.InternalController],
         providers: [internal_service_1.InternalService],
+        exports: [internal_service_1.InternalService],
     })
 ], InternalModule);
 //# sourceMappingURL=internal.module.js.map
