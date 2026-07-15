@@ -262,20 +262,34 @@ export class MarketService {
 
       const searchKeywords = Array.from(keywords).join(' ');
 
-      // MarketItem 생성/업데이트
-      const marketItem = await this.prisma.marketItem.upsert({
-        where: { itemId: key }, // itemId를 식별자로 사용 (단순화)
-        update: { searchKeywords, displayName: first.displayName, grade: first.standardizedGrade },
-        create: {
-          itemId: key,
+      // MarketItem 조회 (고유 조합으로)
+      let marketItem = await this.prisma.marketItem.findFirst({
+        where: {
           species: first.species,
           storageType: first.storageType,
           category: first.category,
           displayName: first.displayName,
-          searchKeywords,
-          grade: first.standardizedGrade,
+          grade: first.standardizedGrade
         }
       });
+
+      if (marketItem) {
+        marketItem = await this.prisma.marketItem.update({
+          where: { itemId: marketItem.itemId },
+          data: { searchKeywords, displayName: first.displayName, grade: first.standardizedGrade }
+        });
+      } else {
+        marketItem = await this.prisma.marketItem.create({
+          data: {
+            species: first.species,
+            storageType: first.storageType,
+            category: first.category,
+            displayName: first.displayName,
+            searchKeywords,
+            grade: first.standardizedGrade,
+          }
+        });
+      }
 
       // 전일 가격 조회 (어제 데이터)
       const yesterday = new Date(today);
