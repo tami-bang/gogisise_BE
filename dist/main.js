@@ -5,9 +5,10 @@ const common_1 = require("@nestjs/common");
 const cookieParser = require('cookie-parser');
 const app_module_1 = require("./app.module");
 const global_exception_filter_1 = require("./core/filters/global-exception.filter");
+let cachedApp;
 async function bootstrap() {
     const app = await core_1.NestFactory.create(app_module_1.AppModule);
-    app.enableCors({ credentials: true, origin: ['http://localhost:5173'] });
+    app.enableCors({ credentials: true, origin: true });
     app.use(cookieParser());
     app.useGlobalFilters(new global_exception_filter_1.GlobalExceptionFilter());
     app.useGlobalPipes(new common_1.ValidationPipe({
@@ -15,8 +16,22 @@ async function bootstrap() {
         forbidNonWhitelisted: true,
         transform: true,
     }));
-    const port = process.env.PORT || 8000;
-    await app.listen(port);
+    if (!process.env.VERCEL) {
+        const port = process.env.PORT || 8000;
+        await app.listen(port);
+    }
+    else {
+        await app.init();
+        cachedApp = app.getHttpAdapter().getInstance();
+    }
 }
-bootstrap();
+if (!process.env.VERCEL) {
+    bootstrap();
+}
+exports.default = async (req, res) => {
+    if (!cachedApp) {
+        await bootstrap();
+    }
+    return cachedApp(req, res);
+};
 //# sourceMappingURL=main.js.map

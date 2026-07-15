@@ -7,12 +7,12 @@ export declare class UsersController {
     getMyProfile(req: Request): Promise<{
         success: boolean;
         data: {
-            userId: any;
-            email: any;
-            nickname: any;
-            status: any;
-            connectedProviders: any;
-            createdAt: any;
+            userId: string;
+            email: string;
+            nickname: string;
+            status: string;
+            connectedProviders: string[];
+            createdAt: Date;
         };
         meta: {
             requestId: string;
@@ -22,7 +22,21 @@ export declare class UsersController {
     getFavorites(req: Request): Promise<{
         success: boolean;
         data: {
-            items: any;
+            items: {
+                itemId: string;
+                species: string;
+                storageType: string;
+                category: string;
+                displayName: string;
+                searchKeywords: string;
+                grade: string | null;
+                price: number | null;
+                previousPrice: number | null;
+                changeAmount: number | null;
+                trendStatus: string | null;
+                currency: string;
+                priceUnit: string;
+            }[];
         };
         meta: {
             requestId: string;

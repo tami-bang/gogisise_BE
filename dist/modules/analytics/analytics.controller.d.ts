@@ -16,7 +16,13 @@ export declare class AnalyticsController {
     getFrequentItems(): Promise<{
         success: boolean;
         data: {
-            items: any;
+            items: {
+                itemId: string;
+                viewCount: number;
+                displayName: string;
+                category: string;
+                price: number | null;
+            }[];
         };
         meta: {
             requestId: string;

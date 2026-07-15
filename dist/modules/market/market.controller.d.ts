@@ -7,7 +7,22 @@ export declare class MarketController {
         data: {
             dataStatus: string;
             marketDate: string;
-            items: any;
+            items: {
+                itemId: string;
+                priceId: string | null;
+                species: string;
+                storageType: string;
+                category: string;
+                displayName: string;
+                searchKeywords: string;
+                grade: string | null;
+                price: number | null;
+                previousPrice: number | null;
+                changeAmount: number | null;
+                trendStatus: string | null;
+                currency: string;
+                priceUnit: string;
+            }[];
         };
         meta: {
             requestId: string;
@@ -17,15 +32,20 @@ export declare class MarketController {
     getItemCalculations(itemId: string): Promise<{
         success: boolean;
         data: {
-            itemId: any;
-            displayName: any;
-            averagePrice: any;
-            changeAmount: any;
-            trendStatus: any;
-            highestPrice: any;
-            lowestPrice: any;
-            participantCount: any;
-            sourceRecords: any;
+            itemId: string;
+            displayName: string;
+            averagePrice: number | null;
+            changeAmount: number | null;
+            trendStatus: string | null;
+            highestPrice: number | null;
+            lowestPrice: number | null;
+            participantCount: number | null;
+            sourceRecords: {
+                sourceName: string;
+                rawProductName: string;
+                price: number;
+                ageInMonths: number | null;
+            }[];
         };
         meta: {
             requestId: string;
@@ -36,10 +56,13 @@ export declare class MarketController {
         success: boolean;
         data: {
             item: {
-                itemId: any;
-                displayName: any;
+                itemId: string;
+                displayName: string;
             };
-            points: any;
+            points: {
+                marketDate: string;
+                price: number | null;
+            }[];
         };
         meta: {
             requestId: string;

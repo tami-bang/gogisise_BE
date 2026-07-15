@@ -5,7 +5,7 @@ export declare class InternalService {
     constructor(prisma: PrismaService);
     createRawRecordsBulk(dto: CreateRawRecordBulkDto): Promise<{
         totalReceived: number;
-        insertedCount: any;
+        insertedCount: number;
         failedCount: number;
     }>;
 }

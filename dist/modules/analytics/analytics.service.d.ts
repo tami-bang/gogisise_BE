@@ -8,5 +8,11 @@ export declare class AnalyticsService {
     constructor(redis: RedisService, prisma: PrismaService);
     logView(userId: string, itemId: string): Promise<void>;
     processViewLogs(): Promise<void>;
-    getFrequentItems(limit?: number): Promise<any>;
+    getFrequentItems(limit?: number): Promise<{
+        itemId: string;
+        viewCount: number;
+        displayName: string;
+        category: string;
+        price: number | null;
+    }[]>;
 }

@@ -7,7 +7,7 @@ export declare class InternalController {
         success: boolean;
         data: {
             totalReceived: number;
-            insertedCount: any;
+            insertedCount: number;
             failedCount: number;
         };
         meta: {

@@ -9,9 +9,9 @@ export declare class AuthController {
     signup(dto: SignupDto): Promise<{
         success: boolean;
         data: {
-            userId: any;
-            email: any;
-            nickname: any;
+            userId: string;
+            email: string;
+            nickname: string;
         };
         meta: {
             requestId: string;
@@ -24,8 +24,8 @@ export declare class AuthController {
             accessToken: string;
             expiresIn: number;
             user: {
-                userId: any;
-                nickname: any;
+                userId: string;
+                nickname: string;
             };
         };
         meta: {
@@ -39,8 +39,8 @@ export declare class AuthController {
             accessToken: string;
             expiresIn: number;
             user: {
-                userId: any;
-                nickname: any;
+                userId: string;
+                nickname: string;
             };
         };
         meta: {

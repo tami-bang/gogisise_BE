@@ -5,24 +5,47 @@ export declare class MarketService {
     getAllMarketItems(): Promise<{
         dataStatus: string;
         marketDate: string;
-        items: any;
+        items: {
+            itemId: string;
+            priceId: string | null;
+            species: string;
+            storageType: string;
+            category: string;
+            displayName: string;
+            searchKeywords: string;
+            grade: string | null;
+            price: number | null;
+            previousPrice: number | null;
+            changeAmount: number | null;
+            trendStatus: string | null;
+            currency: string;
+            priceUnit: string;
+        }[];
     }>;
     getItemCalculations(itemId: string): Promise<{
-        itemId: any;
-        displayName: any;
-        averagePrice: any;
-        changeAmount: any;
-        trendStatus: any;
-        highestPrice: any;
-        lowestPrice: any;
-        participantCount: any;
-        sourceRecords: any;
+        itemId: string;
+        displayName: string;
+        averagePrice: number | null;
+        changeAmount: number | null;
+        trendStatus: string | null;
+        highestPrice: number | null;
+        lowestPrice: number | null;
+        participantCount: number | null;
+        sourceRecords: {
+            sourceName: string;
+            rawProductName: string;
+            price: number;
+            ageInMonths: number | null;
+        }[];
     }>;
     getItemPriceHistory(itemId: string): Promise<{
         item: {
-            itemId: any;
-            displayName: any;
+            itemId: string;
+            displayName: string;
         };
-        points: any;
+        points: {
+            marketDate: string;
+            price: number | null;
+        }[];
     }>;
 }

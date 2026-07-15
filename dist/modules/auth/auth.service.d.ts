@@ -11,17 +11,17 @@ export declare class AuthService {
     private issueAccessToken;
     private issueAndSaveRefreshToken;
     signup(dto: SignupDto): Promise<{
-        userId: any;
-        email: any;
-        nickname: any;
+        userId: string;
+        email: string;
+        nickname: string;
     }>;
     login(dto: LoginDto): Promise<{
         accessToken: string;
         refreshToken: string | null;
         expiresIn: number;
         user: {
-            userId: any;
-            nickname: any;
+            userId: string;
+            nickname: string;
         };
     }>;
     kakaoLogin(dto: KakaoLoginDto): Promise<{
@@ -29,8 +29,8 @@ export declare class AuthService {
         refreshToken: string;
         expiresIn: number;
         user: {
-            userId: any;
-            nickname: any;
+            userId: string;
+            nickname: string;
         };
     }>;
     refreshTokens(refreshTokenFromCookie: string): Promise<{
