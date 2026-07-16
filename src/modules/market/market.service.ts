@@ -32,41 +32,64 @@ export class MarketService {
       }
     });
 
-    // 2. 응답 규격(USER_SERVED_SPEC)에 맞추어 플랫(Flat)하게 매핑
-    const mappedItems = items.map((item) => {
-      const latestPrice = item.prices[0];
+    // 2. 응답 규격(USER_SERVED_SPEC)에 맞추어 플랫(Flat)하게 매핑 및 오매핑 데이터 필터링
+    const mappedItems = items
+      .map((item) => {
+        const latestPrice = item.prices[0];
 
-      // 카테고리 문자열(예: "국내산 돈육 > 냉장 > 삼겹") 파싱하여 필수 필드 복구
-      const isPork = item.category?.includes('돈육');
-      const isBeef = item.category?.includes('한우') || item.category?.includes('소고기');
-      const parsedSpecies = isPork ? 'PORK' : isBeef ? 'BEEF' : item.species;
+        // 카테고리 문자열(예: "국내산 돈육 > 냉장 > 삼겹") 파싱하여 필수 필드 복구
+        const isPork = item.category?.includes('돈육');
+        const isBeef = item.category?.includes('한우') || item.category?.includes('소고기');
+        const parsedSpecies = isPork ? 'PORK' : isBeef ? 'BEEF' : item.species;
 
-      const isChilled = item.category?.includes('냉장');
-      const isFrozen = item.category?.includes('냉동');
-      const parsedStorageType = isChilled ? 'CHILLED' : isFrozen ? 'FROZEN' : item.storageType;
+        const isChilled = item.category?.includes('냉장');
+        const isFrozen = item.category?.includes('냉동');
+        const parsedStorageType = isChilled ? 'CHILLED' : isFrozen ? 'FROZEN' : item.storageType;
 
-      const categoryParts = item.category?.split(' > ');
-      const parsedDisplayName = categoryParts && categoryParts.length > 0 
-        ? categoryParts[categoryParts.length - 1] 
-        : item.displayName;
+        const categoryParts = item.category?.split(' > ');
+        const parsedDisplayName = categoryParts && categoryParts.length > 0 
+          ? categoryParts[categoryParts.length - 1] 
+          : item.displayName;
 
-      return {
-        itemId: item.itemId,
-        priceId: latestPrice ? latestPrice.priceId : null,
-        species: item.species || parsedSpecies,
-        storageType: item.storageType || parsedStorageType,
-        category: item.category,
-        displayName: item.displayName || parsedDisplayName,
-        searchKeywords: item.searchKeywords || '', // DB에서 꺼낸 값 반환 (Null 방어)
-        grade: item.grade,
-        price: item.price || (latestPrice?.price ?? null),
-        previousPrice: latestPrice?.previousPrice ?? null,
-        changeAmount: latestPrice?.changeAmount ?? null,
-        trendStatus: latestPrice?.trendStatus ?? null,
-        currency: item.currency,
-        priceUnit: item.priceUnit,
-      };
-    });
+        return {
+          itemId: item.itemId,
+          name: item.name,
+          priceId: latestPrice ? latestPrice.priceId : null,
+          species: item.species || parsedSpecies,
+          storageType: item.storageType || parsedStorageType,
+          category: item.category,
+          displayName: item.displayName || parsedDisplayName,
+          searchKeywords: item.searchKeywords || '', // DB에서 꺼낸 값 반환 (Null 방어)
+          grade: item.grade,
+          price: item.price || (latestPrice?.price ?? null),
+          previousPrice: latestPrice?.previousPrice ?? null,
+          changeAmount: latestPrice?.changeAmount ?? null,
+          trendStatus: latestPrice?.trendStatus ?? null,
+          currency: item.currency,
+          priceUnit: item.priceUnit,
+        };
+      })
+      .filter((mappedItem) => {
+        // 엄격한 카테고리-상품명 매칭 검사
+        const catParts = mappedItem.category.split(' > ');
+        const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
+
+        const keywords = ['안심', '등심', '채끝', '목심', '앞다리', '부채살', '우둔', '홍두깨', '설도', '양지', '차돌박이', '치마살', '업진살', '사태', '갈비', '안창살', '토시살', '삼겹', '뒷다리', '항정', '등심덧살', '갈매기'];
+        const otherKeywords = keywords.filter(k => k !== catName);
+        
+        // 상품명에 다른 부위의 키워드가 들어있는 경우 제외 (오매핑 방지)
+        const hasOtherKeyword = otherKeywords.some(k => mappedItem.name.includes(k));
+        if (hasOtherKeyword) return false;
+
+        // 상품명에 해당 카테고리 키워드가 포함되어 있는지 검증 (앞다리살인 경우 앞다리 포함 등 예외처리)
+        const hasCorrectKeyword = mappedItem.name.includes(catName) || 
+          (catName === '우둔' && mappedItem.name.includes('우둔살')) ||
+          (catName === '앞다리살' && mappedItem.name.includes('앞다리')) ||
+          (catName === '설도' && mappedItem.name.includes('설깃'));
+
+        return hasCorrectKeyword;
+      })
+      .map(({ name, ...rest }) => rest); // name 필드는 응답 스펙 제외
 
     return {
       dataStatus: 'CURRENT', // 데이터 최신성 플래그
@@ -105,8 +128,7 @@ export class MarketService {
       );
     }
 
-    // 1. 상세 페이지 필터링 로직 (Strict Filtering)
-    // 파이썬 크롤러 단에서 이미 하드 필터링 및 카테고리 매핑이 완료되었으므로, DB 레벨에서 바로 조회 가능합니다.
+    // 1. 상세 페이지 필터링 로직 (Strict Filtering - RawRecord)
     const isPork = item.category?.includes('돈육');
     const isBeef = item.category?.includes('한우') || item.category?.includes('소고기');
     const parsedSpecies = isPork ? 'PORK' : isBeef ? 'BEEF' : item.species;
@@ -115,37 +137,49 @@ export class MarketService {
     const isFrozen = item.category?.includes('냉동');
     const parsedStorageType = isChilled ? 'CHILLED' : isFrozen ? 'FROZEN' : item.storageType;
 
-    const categoryParts = item.category?.split(' > ');
-    const shortCategory = categoryParts && categoryParts.length > 0 
-      ? categoryParts[categoryParts.length - 1] 
-      : item.category;
-
-    const whereCondition: any = {
-      species: item.species || parsedSpecies || undefined,
-      storageType: item.storageType || parsedStorageType || undefined,
-      category: { contains: shortCategory },
-    };
-
-    if (item.grade) {
-      whereCondition.qualityGrade = item.grade;
-    }
-
     const rawRecords = await this.prisma.rawRecord.findMany({
-      where: whereCondition,
+      where: {
+        species: item.species || parsedSpecies || undefined,
+        storageType: item.storageType || parsedStorageType || undefined,
+      },
       orderBy: { collectedAt: 'desc' },
-      take: 10, // 이미 정확히 매핑된 데이터이므로 10개만 가져옵니다.
+      take: 100, // 여유 있게 가져와서 JS 단에서 카테고리 경로를 엄격히 필터링합니다.
     });
 
-    const strictFilteredRecords = rawRecords;
+    const strictFilteredRecords = rawRecords.filter((r) => {
+      const speciesPrefix = r.species === 'BEEF' ? '국내산 한우' : '국내산 돈육';
+      const storagePrefix = r.storageType === 'CHILLED' ? '냉장' : '냉동';
+      
+      // 카테고리 부위명 표준 매핑 규칙
+      let rawCat = r.category;
+      if (r.species === 'BEEF') {
+        if (rawCat === '우둔살') rawCat = '우둔';
+        if (rawCat === '앞다리') rawCat = '앞다리살';
+        if (rawCat === '설깃') rawCat = '설도';
+        if (rawCat === '양지머리' || rawCat.includes('양지')) rawCat = '양지';
+        if (rawCat === '갈비살') rawCat = '갈비';
+      } else if (r.species === 'PORK') {
+        if (rawCat === '앞다리살') rawCat = '앞다리';
+        if (rawCat === '뒷다리살') rawCat = '뒷다리';
+        if (rawCat === '삼겹살') rawCat = '삼겹';
+        if (rawCat === '갈비살') rawCat = '갈비';
+      }
+
+      const reconstructedPath = `${speciesPrefix} > ${storagePrefix} > ${rawCat}`;
+      const isPathMatch = reconstructedPath === item.category;
+      if (!isPathMatch) return false;
+
+      if (item.grade && r.qualityGrade) {
+        return r.qualityGrade === item.grade;
+      }
+      return true;
+    }).slice(0, 10);
 
     // 2. 부위명 매핑 고도화 (Name Mapping)
     const mappedSourceRecords = strictFilteredRecords.map((r) => {
       const rawName = r.rawProductName;
-      
-      // DB에 깔끔하게 분리된 brand 필드 사용
       const brand = r.brand ? `[${r.brand}]` : '';
 
-      // "[브랜드] 부위명 등급" 형태로 개선
       let refinedName = '';
       if (r.category && r.category !== '기타') {
         refinedName = brand ? `${brand} ${r.category}` : r.category;
@@ -154,7 +188,6 @@ export class MarketService {
           refinedName += ` ${r.qualityGrade}`;
         }
 
-        // 상세 특징: '(암)' 키워드가 있다면 보존
         if (r.gender === '암소' || rawName.includes('(암)')) {
           refinedName += ' (암)';
         }
@@ -170,7 +203,6 @@ export class MarketService {
         ageInMonths: r.ageMonths,
         collectedAt: r.collectedAt.toISOString(),
         includedInAverage: true,
-        // === 추가 필드: 프론트엔드 상세 팝업 연동용 ===
         grade: r.qualityGrade || null,
         brand: r.brand || null,
       };
@@ -193,9 +225,29 @@ export class MarketService {
         price: true,
       },
       orderBy: { price: 'asc' },
-      take: 20,
     });
 
+    const filteredSourceItems = sourceItems.filter((si) => {
+      // 본인은 항상 포함
+      if (si.itemId === item.itemId) return true;
+
+      // 오매핑 제거 필터링
+      const catParts = item.category.split(' > ');
+      const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
+
+      const keywords = ['안심', '등심', '채끝', '목심', '앞다리', '부채살', '우둔', '홍두깨', '설도', '양지', '차돌박이', '치마살', '업진살', '사태', '갈비', '안창살', '토시살', '삼겹', '뒷다리', '항정', '등심덧살', '갈매기'];
+      const otherKeywords = keywords.filter(k => k !== catName);
+      
+      const hasOtherKeyword = otherKeywords.some(k => si.name.includes(k));
+      if (hasOtherKeyword) return false;
+
+      const hasCorrectKeyword = si.name.includes(catName) || 
+        (catName === '우둔' && si.name.includes('우둔살')) ||
+        (catName === '앞다리살' && si.name.includes('앞다리')) ||
+        (catName === '설도' && si.name.includes('설깃'));
+
+      return hasCorrectKeyword;
+    }).slice(0, 20);
 
     return {
       itemId: item.itemId,
@@ -206,9 +258,9 @@ export class MarketService {
       trendStatus: latestPrice?.trendStatus ?? 'UNCHANGED',
       highestPrice: latestPrice?.highestPrice ?? currentPrice,
       lowestPrice: latestPrice?.lowestPrice ?? currentPrice,
-      participantCount: latestPrice?.participantCount ?? 0,
+      participantCount: strictFilteredRecords.length, // 실 참여 개수 반영
       sourceRecords: mappedSourceRecords,
-      sourceItems: sourceItems.map((si) => ({
+      sourceItems: filteredSourceItems.map((si) => ({
         itemId: si.itemId,
         name: si.name,
         grade: si.grade || null,
