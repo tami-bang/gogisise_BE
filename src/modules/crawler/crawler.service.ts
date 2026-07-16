@@ -173,6 +173,9 @@ export class CrawlerService {
           }
         });
       }
+    }, {
+      maxWait: 10000, // 10 seconds
+      timeout: 120000 // 120 seconds
     });
   }
 }
