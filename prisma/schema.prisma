@@ -33,12 +33,18 @@ model RawRecord {
 
 model MarketItem {
   itemId         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  species        String   @db.VarChar
-  storageType    String   @db.VarChar
+  goodsNo        String   @unique @db.VarChar
+  name           String   @db.VarChar
+  brand          String   @db.VarChar
+  detailUrl      String   @db.VarChar
+  status         String   @default("ACTIVE") @db.VarChar
+  price          Int      @db.Integer
+  species        String?  @db.VarChar
+  storageType    String?  @db.VarChar
   category       String   @db.VarChar
-  displayName    String   @db.VarChar
+  displayName    String?  @db.VarChar
   grade          String?  @db.VarChar
-  searchKeywords String   @db.VarChar
+  searchKeywords String?  @db.VarChar
   currency       String   @default("KRW") @db.VarChar
   priceUnit      String   @default("KRW_PER_KG") @db.VarChar
   createdAt      DateTime @default(now()) @db.Timestamp(6)
@@ -148,4 +154,14 @@ model CrawlerMetadata {
   lastUpdatedAt   DateTime @default(now()) @db.Timestamp(6)
 
   @@map("Crawler_Metadata")
+}
+
+model CrawlerTask {
+  id        String   @id @db.Uuid
+  payload   Json     @db.JsonB
+  status    String   @default("PENDING") @db.VarChar
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+  updatedAt DateTime @default(now()) @db.Timestamp(6)
+
+  @@map("Crawler_Tasks")
 }

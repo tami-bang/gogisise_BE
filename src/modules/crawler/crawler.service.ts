@@ -1,61 +1,103 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import * as path from 'path';
-
-const execAsync = promisify(exec);
+import { HttpService } from '@nestjs/axios';
+import { firstValueFrom } from 'rxjs';
+import { v4 as uuidv4 } from 'uuid';
+import { AxiosError } from 'axios';
+import * as opossum from 'opossum';
+import { CrawlerTaskPayloadDto } from './dto/crawler-task.dto';
+import { CrawlerIngestDto } from './dto/crawler-ingest.dto';
 
 @Injectable()
 export class CrawlerService {
   private readonly logger = new Logger(CrawlerService.name);
-  // 파이썬 실행 경로 (프로젝트 루트 기준)
-  private readonly pythonScriptPath = path.resolve(process.cwd(), 'src/crawler/python/run.py');
+  private readonly fastapiBase = process.env.FASTAPI_URL || 'http://fastapi:8000';
+  private readonly circuitBreaker: any;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly http: HttpService,
+  ) {
+    const breakerOptions = {
+      timeout: 5000,
+      errorThresholdPercentage: 50,
+      resetTimeout: 30000,
+    };
+    this.circuitBreaker = new opossum(this.publishToFastAPI.bind(this), breakerOptions);
+    this.circuitBreaker.fallback(() => {
+      this.logger.warn('FastAPI circuit open – fallback engaged');
+      throw new InternalServerErrorException('FastAPI unavailable');
+    });
+  }
 
-  /**
-   * [Phase 2] 카테고리별 상품 총 개수(totalCount) 조회
-   */
   async peekLatestMetadata(): Promise<Record<string, number>> {
+    const url = `${this.fastapiBase}/crawler/peek`;
     try {
-      this.logger.log('파이썬 크롤러(peek 모드) 실행 중...');
-      const { stdout } = await execAsync(`python3 "${this.pythonScriptPath}" --action peek`);
+      this.logger.log('파이썬 크롤러(peek 모드) 호출 중...');
+      const response = await firstValueFrom(this.http.get(url));
       
-      const result = JSON.parse(stdout);
-      if (!result.success) {
-        throw new Error(result.error);
+      if (!response.data.success) {
+        throw new Error(response.data.error || 'Unknown peek error');
       }
-      return result.data as Record<string, number>;
-    } catch (error) {
-      this.logger.error('크롤러 peek 실행 실패', error);
-      throw error;
+      return response.data.data as Record<string, number>;
+    } catch (err) {
+      const e = err as AxiosError;
+      this.logger.error('크롤러 peek 호출 실패', e.message);
+      throw new InternalServerErrorException('Peek failed');
     }
   }
 
-  /**
-   * 전체 카테고리 크롤링 실행
-   */
-  async runFullCrawl(): Promise<any> {
+  async runFullCrawl(categories: string[] = []): Promise<any> {
+    const requestId = uuidv4();
+    const payload: CrawlerTaskPayloadDto = { requestId, categories };
+
+    this.logger.log(`파이썬 크롤러(crawl 모드) 작업 발행 중... requestId: ${requestId}`);
+
+    // Prisma $transaction을 활용하여 DB 레코드 생성 후 Redis 발행 진행
+    await this.prisma.$transaction(async (tx) => {
+      await tx.crawlerTask.create({
+        data: {
+          id: requestId,
+          payload: payload as any,
+          status: 'PENDING',
+        },
+      });
+
+      // 여기서 Circuit Breaker를 거쳐 FastAPI로 HTTP POST 수행
+      await this.circuitBreaker.fire(payload);
+    });
+
+    // 트랜잭션 정상 종료 시 퍼블리시 성공으로 마킹
+    await this.prisma.crawlerTask.update({
+      where: { id: requestId },
+      data: { status: 'PUBLISHED' },
+    });
+
+    return { requestId };
+  }
+
+  private async publishToFastAPI(payload: CrawlerTaskPayloadDto): Promise<void> {
+    const url = `${this.fastapiBase}/crawler/crawl`;
     try {
-      this.logger.log('파이썬 크롤러(crawl 모드) 실행 중...');
-      // 최대 버퍼 사이즈 증가 (결과가 클 수 있음)
-      const { stdout } = await execAsync(`python3 "${this.pythonScriptPath}" --action crawl`, { maxBuffer: 1024 * 1024 * 50 });
+      const response = await firstValueFrom(this.http.post(url, payload));
+      this.logger.log(`Crawl task queued on FastAPI: taskId=${response.data.taskId}`);
+    } catch (err) {
+      const e = err as AxiosError;
+      // 실패 시 트랜잭션 외부에 기록될 수 있도록 따로 상태 업데이트 처리
+      await this.prisma.crawlerTask.update({
+        where: { id: payload.requestId },
+        data: { status: 'FAILED' },
+      }).catch(dbErr => this.logger.error('Outbox 실패 마킹 실패', dbErr));
       
-      const result = JSON.parse(stdout);
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-      return result.data;
-    } catch (error) {
-      this.logger.error('크롤러 crawl 실행 실패', error);
-      throw error;
+      this.logger.error('Failed to enqueue crawl on FastAPI', e.message);
+      throw e; // Circuit breaker 카운트 증가
     }
   }
 
-  /**
-   * 최근 저장된 totalCounts 가져오기
-   */
   async getLastTotalCounts(): Promise<Record<string, number> | null> {
     const meta = await this.prisma.crawlerMetadata.findUnique({
       where: { id: 1 },
@@ -63,9 +105,6 @@ export class CrawlerService {
     return meta ? (meta.lastTotalCounts as Record<string, number>) : null;
   }
 
-  /**
-   * 새로운 totalCounts 상태 저장
-   */
   async saveLastTotalCounts(counts: Record<string, number>) {
     await this.prisma.crawlerMetadata.upsert({
       where: { id: 1 },
@@ -81,14 +120,36 @@ export class CrawlerService {
     });
   }
 
-  /**
-   * 체크한 시점만 업데이트
-   */
   async updateLastCheckedAt() {
     await this.prisma.crawlerMetadata.upsert({
       where: { id: 1 },
       update: { lastCheckedAt: new Date() },
       create: { id: 1, lastTotalCounts: {} },
     });
+  }
+
+  async processIngestedData(data: CrawlerIngestDto) {
+    this.logger.log(`Ingesting data for category: ${data.category_path} (${data.items.length} items)`);
+    return await this.prisma.$transaction(
+      data.items.map((item) =>
+        this.prisma.marketItem.upsert({
+          where: { goodsNo: item.goodsNo },
+          update: { 
+            price: item.price, 
+            updatedAt: new Date(),
+            status: 'ACTIVE'
+          },
+          create: {
+            goodsNo: item.goodsNo,
+            name: item.name,
+            price: item.price,
+            category: data.category_path,
+            brand: item.brand,
+            detailUrl: item.detail_url,
+            status: 'ACTIVE'
+          },
+        }),
+      ),
+    );
   }
 }
