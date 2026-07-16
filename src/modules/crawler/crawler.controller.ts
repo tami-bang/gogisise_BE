@@ -1,5 +1,6 @@
 import { Controller, Post, Body, HttpCode, HttpStatus, Logger } from '@nestjs/common';
 import { CrawlerService } from './crawler.service';
+import { IngestCategoryTreeDto } from './dto/category-tree.dto';
 
 @Controller('crawler')
 export class CrawlerController {
@@ -26,5 +27,13 @@ export class CrawlerController {
 
     this.logger.log(`Ingest complete. Upserted ${totalUpserted} total items.`);
     return { success: true, upserted: totalUpserted };
+  }
+
+  @Post('category-tree')
+  @HttpCode(HttpStatus.OK)
+  async ingestCategoryTree(@Body() dto: IngestCategoryTreeDto) {
+    this.logger.log(`Received category tree sync request with ${dto.categories?.length || 0} categories.`);
+    await this.crawlerService.processCategoryTree(dto);
+    return { success: true };
   }
 }

@@ -102,6 +102,191 @@ export class MarketService {
   }
 
   /**
+   * 카테고리 트리 목록 조회
+   */
+  async getCategories(options: { parentNo?: string; depth?: number }) {
+    const where: any = {};
+    if (options.parentNo !== undefined) {
+      where.parentNo = options.parentNo;
+    }
+    if (options.depth !== undefined) {
+      where.depth = options.depth;
+    }
+    return await this.prisma.categoryTree.findMany({
+      where,
+      orderBy: { ctgNo: 'asc' },
+    });
+  }
+
+  /**
+   * 카테고리 경로 기준으로 산출 세부 내역 반환
+   */
+  async getCategoryCalculations(categoryPath: string) {
+    const isPork = categoryPath.includes('돈육') || categoryPath.includes('한돈');
+    const isBeef = categoryPath.includes('한우') || categoryPath.includes('소고기');
+    const species = isPork ? 'PORK' : isBeef ? 'BEEF' : undefined;
+
+    const isChilled = categoryPath.includes('냉장');
+    const isFrozen = categoryPath.includes('냉동');
+    const storageType = isChilled ? 'CHILLED' : isFrozen ? 'FROZEN' : undefined;
+
+    const rawRecords = await this.prisma.rawRecord.findMany({
+      where: {
+        species,
+        storageType,
+      },
+      orderBy: { collectedAt: 'desc' },
+      take: 200, // 여유 있게 수집
+    });
+
+    const strictFilteredRecords = rawRecords.filter((r) => {
+      const isBeefRecord = r.species === 'BEEF';
+      
+      // 하위분류 결정 (국내산 한우 / 국내산 한우 암소 / 국내산 돈육)
+      let subCategory = '';
+      if (isBeefRecord) {
+        const isCow = r.gender === '암소' || r.rawProductName.includes('암소') || r.rawProductName.includes('(암)');
+        subCategory = isCow ? '국내산 한우 암소' : '국내산 한우';
+      } else {
+        subCategory = '국내산 돈육';
+      }
+
+      const speciesPrefix = isBeefRecord ? '국내산 한우' : '국내산 돈육';
+      const storagePrefix = r.storageType === 'CHILLED' ? '냉장' : '냉동';
+      
+      // 카테고리 부위명 표준 매핑 규칙
+      let rawCat = r.category;
+      if (r.species === 'BEEF') {
+        if (rawCat === '우둔살') rawCat = '우둔';
+        if (rawCat === '앞다리') rawCat = '앞다리살';
+        if (rawCat === '설깃') rawCat = '설도';
+        if (rawCat === '양지머리' || rawCat.includes('양지')) rawCat = '양지';
+        if (rawCat === '갈비살') rawCat = '갈비';
+      } else if (r.species === 'PORK') {
+        if (rawCat === '앞다리살') rawCat = '앞다리';
+        if (rawCat === '뒷다리살') rawCat = '뒷다리';
+        if (rawCat === '삼겹살') rawCat = '삼겹';
+        if (rawCat === '갈비살') rawCat = '갈비';
+      }
+
+      const reconstructedPath = `${speciesPrefix} > ${subCategory} > ${storagePrefix} > ${rawCat}`;
+      return reconstructedPath === categoryPath;
+    }).slice(0, 10);
+
+    // 부위명 매핑 고도화 (Name Mapping)
+    const mappedSourceRecords = strictFilteredRecords.map((r) => {
+      const rawName = r.rawProductName;
+      const brand = r.brand ? `[${r.brand}]` : '';
+
+      let refinedName = '';
+      if (r.category && r.category !== '기타') {
+        refinedName = brand ? `${brand} ${r.category}` : r.category;
+        
+        if (r.qualityGrade) {
+          refinedName += ` ${r.qualityGrade}`;
+        }
+
+        if (r.gender === '암소' || rawName.includes('(암)')) {
+          refinedName += ' (암)';
+        }
+      } else {
+        refinedName = brand ? (rawName.startsWith(r.brand) ? rawName : `${brand} ${rawName}`) : rawName;
+      }
+
+      return {
+        id: r.rawRecordId,
+        sourceName: refinedName,
+        rawProductName: rawName,
+        price: r.pricePerKg,
+        ageInMonths: r.ageMonths,
+        collectedAt: r.collectedAt.toISOString(),
+        includedInAverage: true,
+        grade: r.qualityGrade || null,
+        brand: r.brand || null,
+      };
+    });
+
+    // sourceItems: 원본 MarketItem 리스트 (금천미트 바로가기용)
+    const sourceItems = await this.prisma.marketItem.findMany({
+      where: {
+        category: categoryPath,
+      },
+      select: {
+        itemId: true,
+        name: true,
+        grade: true,
+        brand: true,
+        detailUrl: true,
+        price: true,
+      },
+      orderBy: { price: 'asc' },
+    });
+
+    const filteredSourceItems = sourceItems.filter((si) => {
+      const catParts = categoryPath.split(' > ');
+      const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
+
+      const keywords = ['안심', '등심', '채끝', '목심', '앞다리', '부채살', '우둔', '홍두깨', '설도', '양지', '차돌박이', '치마살', '업진살', '사태', '갈비', '안창살', '토시살', '삼겹', '뒷다리', '항정', '등심덧살', '갈매기'];
+      const otherKeywords = keywords.filter(k => k !== catName);
+      
+      const hasOtherKeyword = otherKeywords.some(k => si.name.includes(k));
+      if (hasOtherKeyword) return false;
+
+      const hasCorrectKeyword = si.name.includes(catName) || 
+        (catName === '우둔' && si.name.includes('우둔살')) ||
+        (catName === '앞다리살' && si.name.includes('앞다리')) ||
+        (catName === '설도' && si.name.includes('설깃'));
+
+      return hasCorrectKeyword;
+    }).slice(0, 20);
+
+    // 시세 가격 지표 연산
+    const prices = strictFilteredRecords.map((r) => r.pricePerKg);
+    const averagePrice = prices.length > 0 
+      ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length) 
+      : 0;
+
+    const fallbackPrice = filteredSourceItems.length > 0 
+      ? Math.round(filteredSourceItems.reduce((a, b) => a + b.price, 0) / filteredSourceItems.length) 
+      : 0;
+
+    const finalAverage = averagePrice || fallbackPrice;
+
+    const highestPrice = prices.length > 0 
+      ? Math.max(...prices) 
+      : (filteredSourceItems.length > 0 ? Math.max(...filteredSourceItems.map(si => si.price)) : 0);
+
+    const lowestPrice = prices.length > 0 
+      ? Math.min(...prices) 
+      : (filteredSourceItems.length > 0 ? Math.min(...filteredSourceItems.map(si => si.price)) : 0);
+
+    // 대표 카테고리 정보 추출
+    const catParts = categoryPath.split(' > ');
+    const displayName = catParts[catParts.length - 1];
+
+    return {
+      itemId: `cat-${displayName}`,
+      displayName,
+      grade: null,
+      averagePrice: finalAverage,
+      changeAmount: 0,
+      trendStatus: 'UNCHANGED',
+      highestPrice,
+      lowestPrice,
+      participantCount: strictFilteredRecords.length,
+      sourceRecords: mappedSourceRecords,
+      sourceItems: filteredSourceItems.map((si) => ({
+        itemId: si.itemId,
+        name: si.name,
+        grade: si.grade || null,
+        brand: si.brand || null,
+        detailUrl: si.detailUrl,
+        price: si.price,
+      })),
+    };
+  }
+
+  /**
    * 특정 품목의 시세 산출 세부 내역 (원본 매물) 반환
    */
   async getItemCalculations(itemId: string) {

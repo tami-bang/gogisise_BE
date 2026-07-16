@@ -11,6 +11,7 @@ import { AxiosError } from 'axios';
 import CircuitBreaker = require('opossum');
 import { CrawlerTaskPayloadDto } from './dto/crawler-task.dto';
 import { CrawlerIngestDto } from './dto/crawler-ingest.dto';
+import { IngestCategoryTreeDto } from './dto/category-tree.dto';
 
 @Injectable()
 export class CrawlerService {
@@ -176,6 +177,29 @@ export class CrawlerService {
     }, {
       maxWait: 10000, // 10 seconds
       timeout: 120000 // 120 seconds
+    });
+  }
+
+  async processCategoryTree(dto: IngestCategoryTreeDto) {
+    this.logger.log(`Processing category tree sync with ${dto.categories?.length || 0} nodes.`);
+    
+    return await this.prisma.$transaction(async (tx) => {
+      await tx.categoryTree.deleteMany();
+
+      if (dto.categories && dto.categories.length > 0) {
+        await tx.categoryTree.createMany({
+          data: dto.categories.map((c) => ({
+            ctgNo: c.ctgNo,
+            name: c.name,
+            parentNo: c.parentNo,
+            depth: c.depth,
+            path: c.path,
+          })),
+        });
+      }
+    }, {
+      maxWait: 5000,
+      timeout: 30000,
     });
   }
 }
