@@ -157,19 +157,50 @@ export class MarketService {
         ageInMonths: r.ageMonths,
         collectedAt: r.collectedAt.toISOString(),
         includedInAverage: true,
+        // === 추가 필드: 프론트엔드 상세 팝업 연동용 ===
+        grade: r.qualityGrade || null,
+        brand: r.brand || null,
       };
     });
+
+    // sourceItems: 원본 MarketItem 리스트 (금천미트 바로가기용)
+    const sourceItems = await this.prisma.marketItem.findMany({
+      where: {
+        category: item.category,
+        ...(item.grade ? { grade: item.grade } : {}),
+      },
+      select: {
+        itemId: true,
+        name: true,
+        grade: true,
+        brand: true,
+        detailUrl: true,
+        price: true,
+      },
+      orderBy: { price: 'asc' },
+      take: 20,
+    });
+
 
     return {
       itemId: item.itemId,
       displayName: item.displayName || item.name,
+      grade: item.grade || null,
       averagePrice: currentPrice,
       changeAmount: latestPrice?.changeAmount ?? 0,
       trendStatus: latestPrice?.trendStatus ?? 'UNCHANGED',
       highestPrice: latestPrice?.highestPrice ?? currentPrice,
       lowestPrice: latestPrice?.lowestPrice ?? currentPrice,
       participantCount: latestPrice?.participantCount ?? 0,
-      sourceRecords: mappedSourceRecords, // 새롭게 매핑된 데이터 반환
+      sourceRecords: mappedSourceRecords,
+      sourceItems: sourceItems.map((si) => ({
+        itemId: si.itemId,
+        name: si.name,
+        grade: si.grade || null,
+        brand: si.brand || null,
+        detailUrl: si.detailUrl,
+        price: si.price,
+      })),
     };
   }
 
