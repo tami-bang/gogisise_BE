@@ -296,6 +296,11 @@ export class MarketService {
             displayName: first.displayName,
             searchKeywords,
             grade: first.standardizedGrade,
+            goodsNo: `legacy-${Date.now()}-${Math.random()}`,
+            name: first.displayName,
+            brand: 'Unknown',
+            detailUrl: '',
+            price: 0,
           }
         });
       }

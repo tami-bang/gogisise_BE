@@ -7,6 +7,7 @@ RUN apk add --no-cache openssl libc6-compat
 
 # npm 의존성 설치
 COPY package*.json ./
+COPY prisma ./prisma
 RUN npm install
 
 # 소스코드 복사

@@ -43,6 +43,11 @@ async function bootstrap() {
     }),
   );
 
+  // 요청 본문 크기 제한 증가
+  const bodyParser = require('body-parser');
+  app.use(bodyParser.json({ limit: '50mb' }));
+  app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+
   if (!process.env.VERCEL) {
     const port = process.env.PORT || 8000;
     await app.listen(port);

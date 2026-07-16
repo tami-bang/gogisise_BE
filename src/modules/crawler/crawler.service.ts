@@ -8,7 +8,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { v4 as uuidv4 } from 'uuid';
 import { AxiosError } from 'axios';
-import * as opossum from 'opossum';
+import CircuitBreaker = require('opossum');
 import { CrawlerTaskPayloadDto } from './dto/crawler-task.dto';
 import { CrawlerIngestDto } from './dto/crawler-ingest.dto';
 
@@ -27,7 +27,7 @@ export class CrawlerService {
       errorThresholdPercentage: 50,
       resetTimeout: 30000,
     };
-    this.circuitBreaker = new opossum(this.publishToFastAPI.bind(this), breakerOptions);
+    this.circuitBreaker = new CircuitBreaker(this.publishToFastAPI.bind(this), breakerOptions);
     this.circuitBreaker.fallback(() => {
       this.logger.warn('FastAPI circuit open – fallback engaged');
       throw new InternalServerErrorException('FastAPI unavailable');
