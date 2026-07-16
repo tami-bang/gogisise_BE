@@ -36,13 +36,27 @@ export class MarketService {
     const mappedItems = items.map((item) => {
       const latestPrice = item.prices[0];
 
+      // 카테고리 문자열(예: "국내산 돈육 > 냉장 > 삼겹") 파싱하여 필수 필드 복구
+      const isPork = item.category?.includes('돈육');
+      const isBeef = item.category?.includes('한우') || item.category?.includes('소고기');
+      const parsedSpecies = isPork ? 'PORK' : isBeef ? 'BEEF' : item.species;
+
+      const isChilled = item.category?.includes('냉장');
+      const isFrozen = item.category?.includes('냉동');
+      const parsedStorageType = isChilled ? 'CHILLED' : isFrozen ? 'FROZEN' : item.storageType;
+
+      const categoryParts = item.category?.split(' > ');
+      const parsedDisplayName = categoryParts && categoryParts.length > 0 
+        ? categoryParts[categoryParts.length - 1] 
+        : item.displayName;
+
       return {
         itemId: item.itemId,
         priceId: latestPrice ? latestPrice.priceId : null,
-        species: item.species,
-        storageType: item.storageType,
+        species: item.species || parsedSpecies,
+        storageType: item.storageType || parsedStorageType,
         category: item.category,
-        displayName: item.displayName,
+        displayName: item.displayName || parsedDisplayName,
         searchKeywords: item.searchKeywords || '', // DB에서 꺼낸 값 반환 (Null 방어)
         grade: item.grade,
         price: latestPrice?.price ?? null,
