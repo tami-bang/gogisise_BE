@@ -59,7 +59,7 @@ export class MarketService {
         displayName: item.displayName || parsedDisplayName,
         searchKeywords: item.searchKeywords || '', // DB에서 꺼낸 값 반환 (Null 방어)
         grade: item.grade,
-        price: latestPrice?.price ?? null,
+        price: item.price || (latestPrice?.price ?? null),
         previousPrice: latestPrice?.previousPrice ?? null,
         changeAmount: latestPrice?.changeAmount ?? null,
         trendStatus: latestPrice?.trendStatus ?? null,
@@ -97,7 +97,9 @@ export class MarketService {
     }
 
     const latestPrice = item.prices[0];
-    if (!latestPrice) {
+    const currentPrice = item.price || latestPrice?.price;
+
+    if (!currentPrice) {
       throw new NotFoundException(
         '해당 품목의 가격 데이터가 존재하지 않습니다.',
       );
@@ -160,13 +162,13 @@ export class MarketService {
 
     return {
       itemId: item.itemId,
-      displayName: item.displayName,
-      averagePrice: latestPrice.price,
-      changeAmount: latestPrice.changeAmount,
-      trendStatus: latestPrice.trendStatus,
-      highestPrice: latestPrice.highestPrice,
-      lowestPrice: latestPrice.lowestPrice,
-      participantCount: latestPrice.participantCount,
+      displayName: item.displayName || item.name,
+      averagePrice: currentPrice,
+      changeAmount: latestPrice?.changeAmount ?? 0,
+      trendStatus: latestPrice?.trendStatus ?? 'UNCHANGED',
+      highestPrice: latestPrice?.highestPrice ?? currentPrice,
+      lowestPrice: latestPrice?.lowestPrice ?? currentPrice,
+      participantCount: latestPrice?.participantCount ?? 0,
       sourceRecords: mappedSourceRecords, // 새롭게 매핑된 데이터 반환
     };
   }
@@ -191,12 +193,16 @@ export class MarketService {
     return {
       item: {
         itemId: item.itemId,
-        displayName: item.displayName,
+        displayName: item.displayName || item.name,
       },
-      points: history.map((h) => ({
-        marketDate: h.marketDate.toISOString().split('T')[0],
-        price: h.price,
-      })),
+      points: history.length > 0 
+        ? history.map((h) => ({
+            marketDate: h.marketDate.toISOString().split('T')[0],
+            price: h.price,
+          }))
+        : item.price 
+          ? [{ marketDate: new Date().toISOString().split('T')[0], price: item.price }] 
+          : [],
     };
   }
 
