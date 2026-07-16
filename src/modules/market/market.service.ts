@@ -123,7 +123,7 @@ export class MarketService {
     const whereCondition: any = {
       species: item.species || parsedSpecies || undefined,
       storageType: item.storageType || parsedStorageType || undefined,
-      category: shortCategory,
+      category: { contains: shortCategory },
     };
 
     if (item.grade) {
@@ -179,8 +179,10 @@ export class MarketService {
     // sourceItems: 원본 MarketItem 리스트 (금천미트 바로가기용)
     const sourceItems = await this.prisma.marketItem.findMany({
       where: {
-        category: item.category,
-        ...(item.grade ? { grade: item.grade } : {}),
+        OR: [
+          { itemId: item.itemId },
+          { category: item.category },
+        ]
       },
       select: {
         itemId: true,
