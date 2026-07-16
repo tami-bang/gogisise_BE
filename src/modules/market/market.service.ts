@@ -107,10 +107,23 @@ export class MarketService {
 
     // 1. 상세 페이지 필터링 로직 (Strict Filtering)
     // 파이썬 크롤러 단에서 이미 하드 필터링 및 카테고리 매핑이 완료되었으므로, DB 레벨에서 바로 조회 가능합니다.
+    const isPork = item.category?.includes('돈육');
+    const isBeef = item.category?.includes('한우') || item.category?.includes('소고기');
+    const parsedSpecies = isPork ? 'PORK' : isBeef ? 'BEEF' : item.species;
+
+    const isChilled = item.category?.includes('냉장');
+    const isFrozen = item.category?.includes('냉동');
+    const parsedStorageType = isChilled ? 'CHILLED' : isFrozen ? 'FROZEN' : item.storageType;
+
+    const categoryParts = item.category?.split(' > ');
+    const shortCategory = categoryParts && categoryParts.length > 0 
+      ? categoryParts[categoryParts.length - 1] 
+      : item.category;
+
     const whereCondition: any = {
-      species: item.species,
-      storageType: item.storageType,
-      category: item.category,
+      species: item.species || parsedSpecies || undefined,
+      storageType: item.storageType || parsedStorageType || undefined,
+      category: shortCategory,
     };
 
     if (item.grade) {
