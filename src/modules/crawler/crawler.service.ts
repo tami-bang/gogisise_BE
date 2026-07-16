@@ -130,9 +130,15 @@ export class CrawlerService {
 
   async processIngestedData(data: CrawlerIngestDto) {
     this.logger.log(`Ingesting data for category: ${data.category_path} (${data.items.length} items)`);
-    return await this.prisma.$transaction(
-      data.items.map((item) =>
-        this.prisma.marketItem.upsert({
+    
+    // DB의 @db.Date 에 맞게 오늘 날짜 자정 기준 Date 객체 생성
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return await this.prisma.$transaction(async (tx) => {
+      for (const item of data.items) {
+        // 1. 기존 상품 Upsert
+        const marketItem = await tx.marketItem.upsert({
           where: { goodsNo: item.goodsNo },
           update: { 
             price: item.price, 
@@ -148,8 +154,25 @@ export class CrawlerService {
             detailUrl: item.detail_url,
             status: 'ACTIVE'
           },
-        }),
-      ),
-    );
+        });
+
+        // 2. 가격 이력(Market_Item_Prices) 적재 (오늘 날짜로 데이터 없으면 생성)
+        await tx.marketItemPrice.upsert({
+          where: {
+            itemId_marketDate: {
+              itemId: marketItem.itemId,
+              marketDate: today,
+            }
+          },
+          update: { price: item.price },
+          create: {
+            itemId: marketItem.itemId,
+            marketDate: today,
+            price: item.price,
+            previousPrice: marketItem.price // 기존 가격을 이전 가격으로 임시 저장
+          }
+        });
+      }
+    });
   }
 }
