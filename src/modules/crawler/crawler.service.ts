@@ -142,7 +142,11 @@ export class CrawlerService {
         const marketItem = await tx.marketItem.upsert({
           where: { goodsNo: item.goodsNo },
           update: { 
-            price: item.price, 
+            name: item.name,
+            price: item.price,
+            category: data.category_path,
+            brand: item.brand,
+            detailUrl: item.detail_url,
             updatedAt: new Date(),
             status: 'ACTIVE'
           },
