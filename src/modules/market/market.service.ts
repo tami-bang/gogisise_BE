@@ -171,7 +171,7 @@ export class MarketService {
 
       const reconstructedPath = `${speciesPrefix} > ${subCategory} > ${storagePrefix} > ${rawCat}`;
       return reconstructedPath === categoryPath;
-    }).slice(0, 10);
+    });
 
     // 부위명 매핑 고도화 (Name Mapping)
     const mappedSourceRecords = strictFilteredRecords.map((r) => {
@@ -245,7 +245,7 @@ export class MarketService {
         (catName === '설도' && si.name.includes('설깃'));
 
       return hasCorrectKeyword;
-    }).slice(0, 20);
+    });
 
     // 시세 가격 지표 연산
     const prices = strictFilteredRecords.map((r) => r.pricePerKg);
@@ -364,7 +364,7 @@ export class MarketService {
         return r.qualityGrade === item.grade;
       }
       return true;
-    }).slice(0, 10);
+    });
 
     // 2. 부위명 매핑 고도화 (Name Mapping)
     const mappedSourceRecords = strictFilteredRecords.map((r) => {
@@ -438,7 +438,7 @@ export class MarketService {
         (catName === '설도' && si.name.includes('설깃'));
 
       return hasCorrectKeyword;
-    }).slice(0, 20);
+    });
 
     return {
       itemId: item.itemId,
