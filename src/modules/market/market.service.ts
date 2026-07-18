@@ -210,12 +210,10 @@ export class MarketService {
     const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
 
     // sourceItems: 원본 MarketItem 리스트 (금천미트 바로가기용)
-    // FE의 표준 categoryPath와 DB 저장 경로가 완전히 같지 않을 수 있으므로
-    // 축종/보관상태/마지막 부위명을 조합해 조회한다.
+    // 기존 데이터에는 축종/보관상태가 비어 있을 수 있으므로
+    // 저장된 카테고리 또는 원본 상품명의 마지막 부위명으로 조회한다.
     const sourceItems = await this.prisma.marketItem.findMany({
       where: {
-        species,
-        storageType,
         OR: [
           { category: { contains: catName } },
           { name: { contains: catName } },

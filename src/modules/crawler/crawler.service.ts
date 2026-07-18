@@ -131,6 +131,9 @@ export class CrawlerService {
 
   async processIngestedData(data: CrawlerIngestDto) {
     this.logger.log(`Ingesting data for category: ${data.category_path} (${data.items.length} items)`);
+
+    const species = data.category_path.includes('돈육') ? 'PORK' : 'BEEF';
+    const storageType = data.category_path.includes('냉동') ? 'FROZEN' : 'CHILLED';
     
     // DB의 @db.Date 에 맞게 오늘 날짜 자정 기준 Date 객체 생성
     const today = new Date();
@@ -145,6 +148,8 @@ export class CrawlerService {
             name: item.name,
             price: item.price,
             category: data.category_path,
+            species,
+            storageType,
             brand: item.brand,
             detailUrl: item.detail_url,
             updatedAt: new Date(),
@@ -155,6 +160,8 @@ export class CrawlerService {
             name: item.name,
             price: item.price,
             category: data.category_path,
+            species,
+            storageType,
             brand: item.brand,
             detailUrl: item.detail_url,
             status: 'ACTIVE'
