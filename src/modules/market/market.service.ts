@@ -208,16 +208,17 @@ export class MarketService {
 
     const catParts = categoryPath.split(' > ');
     const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
+    const categoryScope = isPork ? '국내산 돈육' : '국내산 한우 암소';
 
     // sourceItems: 원본 MarketItem 리스트 (금천미트 바로가기용)
     // 기존 데이터에는 축종/보관상태가 비어 있을 수 있으므로
     // 저장된 카테고리 또는 원본 상품명의 마지막 부위명으로 조회한다.
     const sourceItems = await this.prisma.marketItem.findMany({
       where: {
-        OR: [
-          { category: { contains: catName } },
-          { name: { contains: catName } },
-        ],
+        category: {
+          contains: categoryScope,
+          endsWith: catName,
+        },
       },
       select: {
         itemId: true,
