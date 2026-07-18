@@ -1,133 +1,140 @@
-# 📄 [산출물 4] 데이터베이스 ERD 명세서 (ERD_SPEC.md)
+# 고기시세 데이터베이스 ERD 명세
 
-- **디렉토리 구조**: `docs/data/ERD_SPEC.md`
-- **개요**: API 명세서를 기반으로 도출한 통합 데이터베이스 구조(ERD). 데이터 무결성과 상용 수준의 아키텍처(Audit, TTL, Partitioning)를 완벽히 반영함.
+## 1. 설계 원칙
 
-## 1. 🗄️ 테이블 목록 및 구조
+- PostgreSQL과 Prisma를 기준으로 한다.
+- `Market_Items`는 금천미트의 개별 상품(`goodsNo`)을 보존하는 상품 마스터다.
+- 월령·중량·판매가·제조일·소비기한은 검색 문자열이나 JSON에 저장하지 않는다.
+- `searchKeywords`는 상품명·브랜드·카테고리 검색에만 사용한다.
+- 가격과 날짜 및 축종별 월령 규칙은 애플리케이션 검증과 DB CHECK 제약으로 이중 보호한다.
+- 모든 외래키 종속 관계는 명시된 `ON DELETE CASCADE` 정책을 따른다.
 
-### 1.1. 원본 데이터 관리 (Raw Data)
-#### `Raw_Records` (원본 실매물 적재 테이블)
-| 컬럼명 | 타입 | PK/FK/UK | Nullable | 설명 |
+## 2. 핵심 테이블
+
+### 2.1 `Market_Items` — 원본 상품 마스터
+
+| 컬럼 | PostgreSQL 타입 | 제약 | Nullable | 설명 |
 | --- | --- | --- | --- | --- |
-| `rawRecordId` | UUID | PK | ❌ | 원본 실매물 고유 식별자 (gen_random_uuid()) |
-| `sourceName` | VARCHAR | | ❌ | 수집처 (GEUMCHEON 고정) |
-| `collectedAt` | DATETIME | | ❌ | 크롤링 시각 |
-| `rawProductName` | VARCHAR | | ❌ | 쇼핑몰에 등록된 날것의 상품명 전체 |
-| `price` | INT | | ❌ | 1kg당 단가 (원) |
-| `species` | VARCHAR | | ❌ | 축종 (BEEF, PORK) |
-| `storageType` | VARCHAR | | ❌ | 보관 상태 (CHILLED, FROZEN) |
-| `grade` | VARCHAR | | ✅ | 수집된 등급 |
-| `ageInMonths` | INT | | ✅ | 월령 (개월 수) |
-| `createdAt` | DATETIME | | ❌ | 레코드 생성 일시 (Audit) |
+| `itemId` | UUID | PK | 아니오 | 내부 상품 ID |
+| `goodsNo` | VARCHAR | UK | 아니오 | 금천미트 상품 고유번호 |
+| `name` | VARCHAR |  | 아니오 | 원본 상품명 |
+| `brand` | VARCHAR |  | 아니오 | 브랜드 |
+| `detailUrl` | VARCHAR |  | 아니오 | 원본 상품 URL |
+| `status` | VARCHAR | DEFAULT `ACTIVE` | 아니오 | 판매 상태 |
+| `species` | VARCHAR | INDEX, CHECK | 아니오 | `BEEF` 또는 `PORK` |
+| `storageType` | VARCHAR | INDEX, CHECK | 아니오 | `CHILLED` 또는 `FROZEN` |
+| `category` | VARCHAR |  | 아니오 | 금천미트 원본 카테고리 경로 |
+| `displayName` | VARCHAR |  | 예 | 화면 표시명 |
+| `grade` | VARCHAR | INDEX | 예 | `1++`, `1+`, `1` 등급 |
+| `ageMonths` | INTEGER | CHECK | 예 | 한우 1~40, 한돈은 NULL |
+| `weightKg` | DECIMAL(10,3) | CHECK `> 0` | 아니오 | 상품 중량(kg) |
+| `price` | INTEGER | CHECK `> 0` | 아니오 | kg당 단가 |
+| `salePrice` | INTEGER | CHECK `> 0` | 예 | 실제 판매가 |
+| `manufacturedAt` | DATE | CHECK | 예 | 제조일 |
+| `expiresAt` | DATE | CHECK | 예 | 소비기한. 제조일 이후 |
+| `searchKeywords` | VARCHAR |  | 예 | 검색 전용 평문 문자열 |
+| `currency` | VARCHAR | DEFAULT `KRW` | 아니오 | 통화 |
+| `priceUnit` | VARCHAR | DEFAULT `KRW_PER_KG` | 아니오 | 가격 단위 |
+| `createdAt` | TIMESTAMP(6) | DEFAULT NOW | 아니오 | 생성 일시 |
+| `updatedAt` | TIMESTAMP(6) | ORM 자동 갱신 | 아니오 | 수정 일시 |
 
-### 1.2. 서비스 제공 데이터 (Served Data)
-#### `Market_Items` (가공된 품목 마스터)
-| 컬럼명 | 타입 | PK/FK/UK | Nullable | 설명 |
-| --- | --- | --- | --- | --- |
-| `itemId` | UUID | PK | ❌ | 품목 고유 식별자 (gen_random_uuid()) |
-| `species` | VARCHAR | | ❌ | 축종 (BEEF, PORK) |
-| `storageType` | VARCHAR | | ❌ | 보관 상태 (CHILLED, FROZEN) |
-| `category` | VARCHAR | | ❌ | 부위 그룹명 |
-| `displayName` | VARCHAR | | ❌ | 정제된 화면 표시명 |
-| `grade` | VARCHAR | | ✅ | 등급 규격화 |
-| `searchKeywords` | VARCHAR | | ❌ | 클라이언트 검색 인덱스용 문자열 |
-| `currency` | VARCHAR | | ❌ | 통화 단위 (KRW) |
-| `priceUnit` | VARCHAR | | ❌ | 가격 단위 (KRW_PER_KG) |
-| `createdAt` | DATETIME | | ❌ | 생성 일시 (Audit) |
-| `updatedAt` | DATETIME | | ❌ | 수정 일시 (Audit) |
+DB CHECK 정책:
 
-#### `Market_Item_Prices` (품목별 일자별 시세 이력)
-| 컬럼명 | 타입 | PK/FK/UK | Nullable | 설명 |
-| --- | --- | --- | --- | --- |
-| `priceId` | UUID | PK | ❌ | 가격 내역 고유 식별자 (gen_random_uuid()) |
-| `itemId` | UUID | FK / UK1 | ❌ | Market_Items 외래키 |
-| `marketDate` | DATE | UK1 | ❌ | 시세 기준일 (itemId와 함께 복합 고유키) |
-| `price` | INT | | ✅ | 가공 평균가 |
-| `previousPrice` | INT | | ✅ | 전일 가격 |
-| `changeAmount` | INT | | ✅ | 가격 변동액 |
-| `trendStatus` | VARCHAR | | ✅ | 추세 플래그 (UP, DOWN, UNCHANGED) |
-| `highestPrice` | INT | | ✅ | 최고가 |
-| `lowestPrice` | INT | | ✅ | 최저가 |
-| `participantCount` | INT | | ✅ | 산출에 참여한 원본 매물 수 |
-| `createdAt` | DATETIME | | ❌ | 생성 일시 (Audit) |
+```text
+species = BEEF  -> ageMonths BETWEEN 1 AND 40
+species = PORK  -> ageMonths IS NULL
+storageType IN (CHILLED, FROZEN)
+weightKg > 0
+price > 0
+salePrice IS NULL OR salePrice > 0
+expiresAt IS NULL OR manufacturedAt IS NULL OR expiresAt > manufacturedAt
+```
 
-### 1.3. 회원 및 인증 관리 (Auth & Users)
-#### `Users` (유저 마스터)
-| 컬럼명 | 타입 | PK/FK/UK | Nullable | 설명 |
-| --- | --- | --- | --- | --- |
-| `userId` | UUID | PK | ❌ | 유저 마스터 고유 식별자 (gen_random_uuid()) |
-| `email` | VARCHAR | UK | ❌ | 통합 이메일 (유니크) |
-| `phone` | VARCHAR | UK | ❌ | **[기획반영]** 휴대폰 번호 (이메일 찾기 등 본인 인증용) |
-| `password` | VARCHAR | | ✅ | 자체 가입용 해싱 암호 |
-| `nickname` | VARCHAR | | ❌ | 닉네임 |
-| `status` | VARCHAR | | ❌ | 계정 상태 (ACTIVE, LOCKED, BANNED) |
-| `createdAt` | DATETIME | | ❌ | 가입 일시 (Audit) |
-| `updatedAt` | DATETIME | | ❌ | 정보 수정 일시 (Audit) |
-| `deletedAt` | DATETIME | | ✅ | **[Soft Delete]** 논리적 삭제(탈퇴) 일시 |
+조회 최적화 인덱스:
 
-#### `User_Social_Accounts` (소셜 연동 정보)
-| 컬럼명 | 타입 | PK/FK/UK | Nullable | 설명 |
-| --- | --- | --- | --- | --- |
-| `socialId` | UUID | PK | ❌ | 소셜 연동 고유 식별자 (gen_random_uuid()) |
-| `userId` | UUID | FK | ❌ | Users 외래키 (1:N) |
-| `provider` | VARCHAR | | ❌ | 제공자 (KAKAO 등) |
-| `providerUid` | VARCHAR | | ❌ | 플랫폼 내 식별값 |
-| `createdAt` | DATETIME | | ❌ | 연동 일시 (Audit) |
+- `idx_market_items_species(species)`
+- `idx_market_items_storage_type(storageType)`
+- `idx_market_items_grade(grade)`
+- `Market_Items_goodsNo_key(goodsNo)` UNIQUE
 
-#### `User_Tokens` (RTR 토큰 세션)
-| 컬럼명 | 타입 | PK/FK/UK | Nullable | 설명 |
-| --- | --- | --- | --- | --- |
-| `tokenId` | UUID | PK | ❌ | 토큰 세션 식별자 (gen_random_uuid()) |
-| `userId` | UUID | FK | ❌ | Users 외래키 |
-| `refreshToken` | VARCHAR | | ❌ | 암호화된 리프레시 토큰 |
-| `isBlacklisted` | BOOLEAN | | ❌ | 강제 무효화 여부 |
-| `expiresAt` | DATETIME | | ❌ | **[TTL 관리]** 만료 일시 (배치 삭제용) |
-| `createdAt` | DATETIME | | ❌ | 발급 일시 (Audit) |
+### 2.2 `Market_Item_Prices` — 일자별 가격 이력
 
-### 1.4. 유저 활동 이력 (User Activities)
-#### `Favorites` (즐겨찾기)
-| 컬럼명 | 타입 | PK/FK/UK | Nullable | 설명 |
-| --- | --- | --- | --- | --- |
-| `favoriteId` | UUID | PK | ❌ | 즐겨찾기 식별자 (gen_random_uuid()) |
-| `userId` | UUID | FK / UK1 | ❌ | Users 외래키 |
-| `itemId` | UUID | FK / UK1 | ❌ | Market_Items 외래키 (userId와 함께 복합 고유키) |
-| `createdAt` | DATETIME | | ❌ | 즐겨찾기 추가 일시 (Audit) |
+| 컬럼 | 타입 | 제약 | Nullable |
+| --- | --- | --- | --- |
+| `priceId` | UUID | PK | 아니오 |
+| `itemId` | UUID | FK → Market_Items | 아니오 |
+| `marketDate` | DATE | 복합 UK | 아니오 |
+| `price` | INTEGER |  | 예 |
+| `previousPrice` | INTEGER |  | 예 |
+| `changeAmount` | INTEGER |  | 예 |
+| `trendStatus` | VARCHAR |  | 예 |
+| `highestPrice` | INTEGER |  | 예 |
+| `lowestPrice` | INTEGER |  | 예 |
+| `participantCount` | INTEGER |  | 예 |
+| `createdAt` | TIMESTAMP(6) | Audit | 아니오 |
+| `updatedAt` | TIMESTAMP(6) | Audit, ORM 자동 갱신 | 아니오 |
 
-#### `User_Views_Log` (조회 이력)
-| 컬럼명 | 타입 | PK/FK/UK | Nullable | 설명 |
-| --- | --- | --- | --- | --- |
-| `logId` | UUID | PK | ❌ | 조회 로그 식별자 (gen_random_uuid()) |
-| `userId` | UUID | FK | ❌ | Users 외래키 |
-| `itemId` | UUID | FK | ❌ | Market_Items 외래키 |
-| `viewedAt` | DATETIME | | ❌ | **[Partition Key]** 조회 일시 (파티셔닝 및 아카이빙 기준) |
+`(itemId, marketDate)` 복합 유니크 키로 동일 상품의 같은 날짜 가격 중복을 차단한다.
 
-## 2. 🔗 테이블 간 관계 (Relationships)
+### 2.3 `Raw_Records` — 불변 원본 시세
 
-1. **`Users` (1) ↔ `User_Social_Accounts` (N)**: 한 명의 사용자가 여러 개의 소셜 계정을 연동.
-2. **`Users` (1) ↔ `User_Tokens` (N)**: 한 명의 사용자가 여러 디바이스에서 토큰 세션 보유.
-3. **`Users` (1) ↔ `Favorites` (N)**: 한 명의 사용자가 여러 품목을 즐겨찾기 가능.
-4. **`Market_Items` (1) ↔ `Favorites` (N)**: 하나의 품목이 여러 사용자의 즐겨찾기에 추가됨.
-5. **`Users` (1) ↔ `User_Views_Log` (N)**: 한 명의 사용자가 여러 품목의 조회 로그를 남김.
-6. **`Market_Items` (1) ↔ `User_Views_Log` (N)**: 하나의 품목이 여러 사용자에게 조회됨.
-7. **`Market_Items` (1) ↔ `Market_Item_Prices` (N)**: 하나의 품목이 날짜별로 여러 개의 가격 산출 이력을 가짐.
+수집처, 수집 시각, 원본 상품명, 축종, 성별, 보관 상태, 카테고리, 브랜드, 품질·육량 등급, 월령, kg당 단가를 보존한다. 동일 수집 결과 재전송은 `(sourceName, collectedAt, rawProductName, pricePerKg, species, storageType)` 복합 유니크 키로 차단한다.
 
-## 3. 🛡️ 무결성 및 인덱싱 정책 (Data Integrity & Indexing)
+## 3. 사용자 및 인증 테이블
 
-1. **복합 고유키 (Composite Unique Key) 제약조건 설정**
-   - **`Favorites`**: `(userId, itemId)`에 대해 UNIQUE 제약을 설정하여 한 명의 유저가 동일한 품목을 2번 이상 중복해서 즐겨찾기에 넣는 것을 DB 단에서 원천 차단합니다.
-   - **`Market_Item_Prices`**: `(itemId, marketDate)`에 대해 UNIQUE 제약을 설정하여 특정 품목의 같은 날짜 시세가 중복으로 생성되는 무결성 훼손을 방지합니다.
+### 3.1 `Users`
 
-2. **토큰 수명 관리 (TTL 및 Purge Policy)**
-   - **`User_Tokens.expiresAt`**: 해당 컬럼을 기준으로 RDBMS의 내장 이벤트 스케줄러(Event Scheduler) 또는 별도의 배치(Batch) 잡을 통해 유효기간이 지난 토큰들을 주기적으로 물리 삭제(Purge)하여 스토리지 낭비와 조회 성능 저하를 방지합니다.
+| 컬럼 | 타입 | 제약 | Nullable |
+| --- | --- | --- | --- |
+| `userId` | UUID | PK | 아니오 |
+| `email` | VARCHAR | UK | 아니오 |
+| `phone` | VARCHAR | UK | 아니오 |
+| `password` | VARCHAR |  | 예 |
+| `nickname` | VARCHAR |  | 아니오 |
+| `status` | VARCHAR | DEFAULT `ACTIVE` | 아니오 |
+| `createdAt` | TIMESTAMP(6) | Audit | 아니오 |
+| `updatedAt` | TIMESTAMP(6) | Audit, ORM 자동 갱신 | 아니오 |
+| `deletedAt` | TIMESTAMP(6) | Soft Delete | 예 |
 
-3. **무한 적재 방지 및 쿼리 최적화 (Partitioning)**
-   - **`User_Views_Log`**: 데이터 폭발을 방지하고 빠른 조회를 유지하기 위해 `viewedAt` 컬럼을 기준으로 **월별 파티셔닝(Monthly Partitioning)**을 적용합니다. 3개월(또는 6개월)이 지난 과거 데이터 파티션은 로그성 데이터 보관 정책(Retention Policy)에 따라 백업 후 Drop 처리합니다.
+`phone`은 회원가입·본인확인에 사용하는 유일한 휴대폰 번호다. 탈퇴는 `deletedAt`을 기록하는 논리 삭제를 우선한다.
 
-4. **논리적 삭제 (Soft Delete)**
-   - **`Users.deletedAt`**: 회원 탈퇴 시 데이터를 물리적으로 즉각 삭제(Hard Delete)하지 않고 `deletedAt`에 타임스탬프를 기록합니다. 이를 통해 복구 기간을 부여하고, 과거 결제나 로그 기록 등 연관 데이터가 고아(Orphan) 상태가 되는 것을 막습니다.
+### 3.2 `User_Tokens`
 
-5. **감사 추적 (Audit Trail)**
-   - 시스템의 투명한 추적과 운영 이슈 파악을 위해 핵심 엔티티(`Raw_Records`, `Market_Items`, `Users` 등)에 `createdAt`, `updatedAt` 필드를 기본 규격으로 구성하였습니다.
+`tokenId` PK, `userId` FK, `refreshToken`, `isBlacklisted`, `expiresAt`, `createdAt`, `updatedAt`을 가진다. `expiresAt` 인덱스를 사용해 만료 토큰을 주기적으로 삭제한다.
 
-6. **외래키(FK) 연쇄 삭제 정책 (Cascade)**
-   - 모든 외래키(FK) 관계에는 종속 데이터가 방치되는 고아(Orphan) 현상을 막기 위해 `ON DELETE CASCADE`를 명시적으로 적용합니다. 부모 데이터(예: Users)가 물리 삭제될 경우, 그 하위 데이터(`User_Tokens`, `User_Social_Accounts` 등)도 자동으로 함께 지워집니다. (기본적으로 `Soft Delete`를 우선하므로 실제 물리 삭제 시에만 작동합니다.)
+### 3.3 `Favorites`
+
+`favoriteId` PK, `userId` FK, `itemId` FK, `createdAt`, `updatedAt`을 가진다. `(userId, itemId)` 복합 유니크 키로 중복 즐겨찾기를 차단한다.
+
+### 3.4 기타 사용자 테이블
+
+- `User_Social_Accounts`: 소셜 계정 연결과 `createdAt`, `updatedAt` 감사 컬럼.
+- `User_Views_Log`: `(logId, viewedAt)` 복합 PK. `viewedAt` 기준 월별 파티셔닝·보존 정책 적용.
+
+## 4. 운영 테이블
+
+- `Category_Tree`: 금천미트 원본 카테고리 트리. 594개 한우 암소·한돈 말단 카테고리 탐색 기준.
+- `Crawler_Tasks`: 비동기 수집 요청과 상태, `createdAt`, `updatedAt` 보존.
+- `Crawler_Metadata`: 최근 수집 건수와 점검·갱신 일시 보존.
+
+## 5. 관계 및 삭제 정책
+
+- Users 1:N User_Social_Accounts
+- Users 1:N User_Tokens
+- Users 1:N Favorites
+- Users 1:N User_Views_Log
+- Market_Items 1:N Market_Item_Prices
+- Market_Items 1:N Favorites
+- Market_Items 1:N User_Views_Log
+
+사용자 또는 상품이 물리 삭제될 때 관계 테이블의 고아 데이터를 남기지 않도록 FK에 `ON DELETE CASCADE`를 적용한다. Users는 법적·운영 보존기간을 고려해 물리 삭제보다 `deletedAt` 기반 논리 삭제를 우선한다.
+
+## 6. 마이그레이션 및 백필 정책
+
+1. Expand: Prisma migration으로 nullable 정식 컬럼·인덱스·감사 컬럼을 무중단 추가한다.
+2. Backfill: 최신 크롤러로 전체 594개 카테고리를 재수집해 기존 상품을 `goodsNo` 기준 upsert한다.
+3. Verify: 필수값 누락과 CHECK 위반 후보가 0건인지 검증한다.
+4. Contract: `prisma/post_backfill/20260719091000_enforce_market_item_constraints.sql`을 실행해 NOT NULL과 CHECK를 강제한다.
+5. 기존 JSON 값은 Expand 단계에서 가능한 항목만 일회성 이관하고, `searchKeywords`는 즉시 검색 문자열로 되돌린다.
+
+운영 DB 점검 당시 기존 `Market_Items` 7,350건 모두 `species`와 `storageType`이 비어 있었으므로 Expand와 Backfill 없이 Contract SQL을 먼저 실행해서는 안 된다.
