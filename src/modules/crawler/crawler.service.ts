@@ -13,6 +13,21 @@ import { CrawlerTaskPayloadDto } from './dto/crawler-task.dto';
 import { CrawlerIngestDto } from './dto/crawler-ingest.dto';
 import { IngestCategoryTreeDto } from './dto/category-tree.dto';
 
+const parseSourceDate = (value?: string | null): Date | null => {
+  if (!value) return null;
+  const digits = value.replace(/\D/g, '');
+  if (digits.length !== 8) return null;
+  const year = Number(digits.slice(0, 4));
+  const month = Number(digits.slice(4, 6));
+  const day = Number(digits.slice(6, 8));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+    ? date
+    : null;
+};
+
 @Injectable()
 export class CrawlerService {
   private readonly logger = new Logger(CrawlerService.name);
@@ -143,6 +158,11 @@ export class CrawlerService {
       for (const item of data.items) {
         const itemSpecies = item.metadata.species || species;
         const itemStorageType = item.metadata.storage_type || storageType;
+        const manufacturedAt = parseSourceDate(item.metadata.mfg_date);
+        const expiresAt = parseSourceDate(item.metadata.expiry_date);
+        const searchKeywords = [item.name, item.brand, data.category_path]
+          .filter(Boolean)
+          .join(' ');
         // 1. 기존 상품 Upsert
         const marketItem = await tx.marketItem.upsert({
           where: { goodsNo: item.goodsNo },
@@ -155,8 +175,12 @@ export class CrawlerService {
             brand: item.brand,
             detailUrl: item.detail_url,
             grade: item.metadata.grade || null,
-            searchKeywords: JSON.stringify(item.metadata),
-            updatedAt: new Date(),
+            ageMonths: item.metadata.age,
+            weightKg: item.metadata.weight_kg,
+            salePrice: item.metadata.sale_price,
+            manufacturedAt,
+            expiresAt,
+            searchKeywords,
             status: 'ACTIVE'
           },
           create: {
@@ -169,7 +193,12 @@ export class CrawlerService {
             brand: item.brand,
             detailUrl: item.detail_url,
             grade: item.metadata.grade || null,
-            searchKeywords: JSON.stringify(item.metadata),
+            ageMonths: item.metadata.age,
+            weightKg: item.metadata.weight_kg,
+            salePrice: item.metadata.sale_price,
+            manufacturedAt,
+            expiresAt,
+            searchKeywords,
             status: 'ACTIVE'
           },
         });

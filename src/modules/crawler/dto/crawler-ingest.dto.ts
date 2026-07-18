@@ -17,10 +17,10 @@ export class CrawlerIngestDto {
       grade?: string | null;
       mfg_date: string;
       expiry_date?: string;
-      weight_kg?: number | null;
+      weight_kg: number;
       sale_price?: number | null;
-      species?: 'BEEF' | 'PORK';
-      storage_type?: 'CHILLED' | 'FROZEN' | null;
+      species: 'BEEF' | 'PORK';
+      storage_type: 'CHILLED' | 'FROZEN';
       haccp?: string;
     };
   }>;

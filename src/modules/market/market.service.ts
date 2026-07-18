@@ -1,8 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 
 @Injectable()
 export class MarketService {
+  private readonly logger = new Logger(MarketService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -232,7 +234,11 @@ export class MarketService {
         brand: true,
         detailUrl: true,
         price: true,
-        searchKeywords: true,
+        ageMonths: true,
+        weightKg: true,
+        salePrice: true,
+        manufacturedAt: true,
+        expiresAt: true,
       },
       orderBy: { price: 'asc' },
     });
@@ -286,28 +292,19 @@ export class MarketService {
       lowestPrice,
       participantCount: strictFilteredRecords.length,
       sourceRecords: mappedSourceRecords,
-      sourceItems: filteredSourceItems.map((si) => {
-        let metadata: Record<string, unknown> = {};
-        try {
-          metadata = si.searchKeywords ? JSON.parse(si.searchKeywords) : {};
-        } catch {
-          metadata = {};
-        }
-
-        return {
-          itemId: si.itemId,
-          name: si.name,
-          grade: si.grade || metadata.grade || null,
-          brand: si.brand || null,
-          detailUrl: si.detailUrl,
-          price: si.price,
-          ageInMonths: metadata.age ?? null,
-          manufacturedAt: metadata.mfg_date || null,
-          expiresAt: metadata.expiry_date || null,
-          weightKg: metadata.weight_kg ?? null,
-          salePrice: metadata.sale_price ?? null,
-        };
-      }),
+      sourceItems: filteredSourceItems.map((si) => ({
+        itemId: si.itemId,
+        name: si.name,
+        grade: si.grade,
+        brand: si.brand || null,
+        detailUrl: si.detailUrl,
+        price: si.price,
+        ageInMonths: si.ageMonths,
+        manufacturedAt: si.manufacturedAt,
+        expiresAt: si.expiresAt,
+        weightKg: Number(si.weightKg),
+        salePrice: si.salePrice,
+      })),
     };
   }
 
@@ -610,28 +607,20 @@ export class MarketService {
         }
       });
 
-      if (marketItem) {
-        marketItem = await this.prisma.marketItem.update({
-          where: { itemId: marketItem.itemId },
-          data: { searchKeywords, displayName: first.displayName, grade: first.standardizedGrade }
-        });
-      } else {
-        marketItem = await this.prisma.marketItem.create({
-          data: {
-            species: first.species,
-            storageType: first.storageType,
-            category: first.category,
-            displayName: first.displayName,
-            searchKeywords,
-            grade: first.standardizedGrade,
-            goodsNo: `legacy-${Date.now()}-${Math.random()}`,
-            name: first.displayName,
-            brand: 'Unknown',
-            detailUrl: '',
-            price: 0,
-          }
-        });
+      if (!marketItem) {
+        this.logger.warn(`원본 상품 마스터가 없어 집계 생성을 건너뜁니다: ${key}`);
+        continue;
       }
+
+      marketItem = await this.prisma.marketItem.update({
+        where: { itemId: marketItem.itemId },
+        data: {
+          searchKeywords,
+          displayName: first.displayName,
+          grade: first.standardizedGrade,
+          price: avgPrice,
+        },
+      });
 
       // 전일 가격 조회 (어제 데이터)
       const yesterday = new Date(today);

@@ -7,7 +7,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")  // DDL 마이그레이션용 직접 연결
+  directUrl = env("DIRECT_URL") // DDL 마이그레이션용 직접 연결
 }
 
 model RawRecord {
@@ -32,60 +32,69 @@ model RawRecord {
 }
 
 model MarketItem {
-  itemId         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  goodsNo        String   @unique @db.VarChar
-  name           String   @db.VarChar
-  brand          String   @db.VarChar
-  detailUrl      String   @db.VarChar
-  status         String   @default("ACTIVE") @db.VarChar
-  price          Int      @db.Integer
-  species        String?  @db.VarChar
-  storageType    String?  @db.VarChar
-  category       String   @db.VarChar
-  displayName    String?  @db.VarChar
-  grade          String?  @db.VarChar
-  searchKeywords String?  @db.VarChar
-  currency       String   @default("KRW") @db.VarChar
-  priceUnit      String   @default("KRW_PER_KG") @db.VarChar
-  createdAt      DateTime @default(now()) @db.Timestamp(6)
-  updatedAt      DateTime @default(now()) @db.Timestamp(6)
+  itemId         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  goodsNo        String    @unique @db.VarChar
+  name           String    @db.VarChar
+  brand          String    @db.VarChar
+  detailUrl      String    @db.VarChar
+  status         String    @default("ACTIVE") @db.VarChar
+  price          Int       @db.Integer
+  species        String    @db.VarChar
+  storageType    String    @db.VarChar
+  category       String    @db.VarChar
+  displayName    String?   @db.VarChar
+  grade          String?   @db.VarChar
+  ageMonths      Int?      @db.Integer
+  weightKg       Decimal   @db.Decimal(10, 3)
+  salePrice      Int?      @db.Integer
+  manufacturedAt DateTime? @db.Date
+  expiresAt      DateTime? @db.Date
+  searchKeywords String?   @db.VarChar
+  currency       String    @default("KRW") @db.VarChar
+  priceUnit      String    @default("KRW_PER_KG") @db.VarChar
+  createdAt      DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @db.Timestamp(6)
 
   prices    MarketItemPrice[]
   favorites Favorite[]
   views     UserViewsLog[]
 
+  @@index([species], map: "idx_market_items_species")
+  @@index([storageType], map: "idx_market_items_storage_type")
+  @@index([grade], map: "idx_market_items_grade")
   @@map("Market_Items")
 }
 
 model MarketItemPrice {
-  priceId          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  itemId           String     @db.Uuid
-  marketDate       DateTime   @db.Date
-  price            Int?       @db.Integer
-  previousPrice    Int?       @db.Integer
-  changeAmount     Int?       @db.Integer
-  trendStatus      String?    @db.VarChar
-  highestPrice     Int?       @db.Integer
-  lowestPrice      Int?       @db.Integer
-  participantCount Int?       @db.Integer
-  createdAt        DateTime   @default(now()) @db.Timestamp(6)
+  priceId          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  itemId           String   @db.Uuid
+  marketDate       DateTime @db.Date
+  price            Int?     @db.Integer
+  previousPrice    Int?     @db.Integer
+  changeAmount     Int?     @db.Integer
+  trendStatus      String?  @db.VarChar
+  highestPrice     Int?     @db.Integer
+  lowestPrice      Int?     @db.Integer
+  participantCount Int?     @db.Integer
+  createdAt        DateTime @default(now()) @db.Timestamp(6)
+  updatedAt        DateTime @default(now()) @updatedAt @db.Timestamp(6)
 
-  item             MarketItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade, map: "fk_market_item_prices_item")
+  item MarketItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade, map: "fk_market_item_prices_item")
 
   @@unique([itemId, marketDate], map: "uk_market_item_prices_date")
   @@map("Market_Item_Prices")
 }
 
 model User {
-  userId         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  email          String    @unique @db.VarChar
-  phone          String    @unique @db.VarChar
-  password       String?   @db.VarChar
-  nickname       String    @db.VarChar
-  status         String    @default("ACTIVE") @db.VarChar
-  createdAt      DateTime  @default(now()) @db.Timestamp(6)
-  updatedAt      DateTime  @default(now()) @db.Timestamp(6)
-  deletedAt      DateTime? @db.Timestamp(6)
+  userId    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String    @unique @db.VarChar
+  phone     String    @unique @db.VarChar
+  password  String?   @db.VarChar
+  nickname  String    @db.VarChar
+  status    String    @default("ACTIVE") @db.VarChar
+  createdAt DateTime  @default(now()) @db.Timestamp(6)
+  updatedAt DateTime  @default(now()) @updatedAt @db.Timestamp(6)
+  deletedAt DateTime? @db.Timestamp(6)
 
   socialAccounts UserSocialAccount[]
   tokens         UserToken[]
@@ -101,8 +110,9 @@ model UserSocialAccount {
   provider    String   @db.VarChar
   providerUid String   @db.VarChar
   createdAt   DateTime @default(now()) @db.Timestamp(6)
+  updatedAt   DateTime @default(now()) @updatedAt @db.Timestamp(6)
 
-  user        User     @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_social_accounts_user")
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_social_accounts_user")
 
   @@map("User_Social_Accounts")
 }
@@ -114,9 +124,11 @@ model UserToken {
   isBlacklisted Boolean  @default(false)
   expiresAt     DateTime @db.Timestamp(6)
   createdAt     DateTime @default(now()) @db.Timestamp(6)
+  updatedAt     DateTime @default(now()) @updatedAt @db.Timestamp(6)
 
-  user          User     @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_user_tokens_user")
+  user User @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_user_tokens_user")
 
+  @@index([expiresAt], map: "idx_user_tokens_expires_at")
   @@map("User_Tokens")
 }
 
@@ -125,22 +137,23 @@ model Favorite {
   userId     String   @db.Uuid
   itemId     String   @db.Uuid
   createdAt  DateTime @default(now()) @db.Timestamp(6)
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamp(6)
 
-  user       User       @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_favorites_user")
-  item       MarketItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade, map: "fk_favorites_item")
+  user User       @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_favorites_user")
+  item MarketItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade, map: "fk_favorites_item")
 
   @@unique([userId, itemId], map: "uk_favorites_user_item")
   @@map("Favorites")
 }
 
 model UserViewsLog {
-  logId     String   @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String   @db.Uuid
-  itemId    String   @db.Uuid
-  viewedAt  DateTime @default(now()) @db.Timestamp(6)
+  logId    String   @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId   String   @db.Uuid
+  itemId   String   @db.Uuid
+  viewedAt DateTime @default(now()) @db.Timestamp(6)
 
-  user      User       @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_views_log_user")
-  item      MarketItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade, map: "fk_views_log_item")
+  user User       @relation(fields: [userId], references: [userId], onDelete: Cascade, map: "fk_views_log_user")
+  item MarketItem @relation(fields: [itemId], references: [itemId], onDelete: Cascade, map: "fk_views_log_item")
 
   // 파티셔닝 테이블의 특성상 파티션 키(viewedAt)가 PK에 포함되어야 함
   @@id([logId, viewedAt])
@@ -161,19 +174,19 @@ model CrawlerTask {
   payload   Json     @db.JsonB
   status    String   @default("PENDING") @db.VarChar
   createdAt DateTime @default(now()) @db.Timestamp(6)
-  updatedAt DateTime @default(now()) @db.Timestamp(6)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamp(6)
 
   @@map("Crawler_Tasks")
 }
 
 model CategoryTree {
-  ctgNo       String   @id @db.VarChar
-  name        String   @db.VarChar
-  parentNo    String?  @db.VarChar
-  depth       Int      @db.Integer
-  path        String   @db.VarChar
-  createdAt   DateTime @default(now()) @db.Timestamp(6)
-  updatedAt   DateTime @default(now()) @db.Timestamp(6)
+  ctgNo     String   @id @db.VarChar
+  name      String   @db.VarChar
+  parentNo  String?  @db.VarChar
+  depth     Int      @db.Integer
+  path      String   @db.VarChar
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+  updatedAt DateTime @default(now()) @updatedAt @db.Timestamp(6)
 
   @@map("Category_Tree")
 }
