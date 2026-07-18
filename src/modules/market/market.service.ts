@@ -206,10 +206,17 @@ export class MarketService {
       };
     });
 
+    const catParts = categoryPath.split(' > ');
+    const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
+
     // sourceItems: 원본 MarketItem 리스트 (금천미트 바로가기용)
+    // FE의 표준 categoryPath와 DB 저장 경로가 완전히 같지 않을 수 있으므로
+    // 축종/보관상태/마지막 부위명을 조합해 조회한다.
     const sourceItems = await this.prisma.marketItem.findMany({
       where: {
-        category: categoryPath,
+        species,
+        storageType,
+        category: { contains: catName },
       },
       select: {
         itemId: true,
@@ -223,9 +230,6 @@ export class MarketService {
     });
 
     const filteredSourceItems = sourceItems.filter((si) => {
-      const catParts = categoryPath.split(' > ');
-      const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
-
       const keywords = ['안심', '등심', '채끝', '목심', '앞다리', '부채살', '우둔', '홍두깨', '설도', '양지', '차돌박이', '치마살', '업진살', '사태', '갈비', '안창살', '토시살', '삼겹', '뒷다리', '항정', '등심덧살', '갈매기'];
       const otherKeywords = keywords.filter(k => k !== catName);
       
@@ -261,7 +265,6 @@ export class MarketService {
       : (filteredSourceItems.length > 0 ? Math.min(...filteredSourceItems.map(si => si.price)) : 0);
 
     // 대표 카테고리 정보 추출
-    const catParts = categoryPath.split(' > ');
     const displayName = catParts[catParts.length - 1];
 
     return {
