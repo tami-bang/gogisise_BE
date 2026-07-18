@@ -232,6 +232,7 @@ export class MarketService {
         brand: true,
         detailUrl: true,
         price: true,
+        searchKeywords: true,
       },
       orderBy: { price: 'asc' },
     });
@@ -285,14 +286,28 @@ export class MarketService {
       lowestPrice,
       participantCount: strictFilteredRecords.length,
       sourceRecords: mappedSourceRecords,
-      sourceItems: filteredSourceItems.map((si) => ({
-        itemId: si.itemId,
-        name: si.name,
-        grade: si.grade || null,
-        brand: si.brand || null,
-        detailUrl: si.detailUrl,
-        price: si.price,
-      })),
+      sourceItems: filteredSourceItems.map((si) => {
+        let metadata: Record<string, unknown> = {};
+        try {
+          metadata = si.searchKeywords ? JSON.parse(si.searchKeywords) : {};
+        } catch {
+          metadata = {};
+        }
+
+        return {
+          itemId: si.itemId,
+          name: si.name,
+          grade: si.grade || metadata.grade || null,
+          brand: si.brand || null,
+          detailUrl: si.detailUrl,
+          price: si.price,
+          ageInMonths: metadata.age ?? null,
+          manufacturedAt: metadata.mfg_date || null,
+          expiresAt: metadata.expiry_date || null,
+          weightKg: metadata.weight_kg ?? null,
+          salePrice: metadata.sale_price ?? null,
+        };
+      }),
     };
   }
 

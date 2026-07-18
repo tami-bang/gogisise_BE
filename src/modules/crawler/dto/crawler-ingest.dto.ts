@@ -12,6 +12,14 @@ export class CrawlerIngestDto {
     brand: string;
     detail_url: string;
     goodsNo: string;
-    metadata: { age: number | null; mfg_date: string; haccp?: string };
+    metadata: {
+      age: number | null;
+      grade?: string | null;
+      mfg_date: string;
+      expiry_date?: string;
+      weight_kg?: number | null;
+      sale_price?: number | null;
+      haccp?: string;
+    };
   }>;
 }

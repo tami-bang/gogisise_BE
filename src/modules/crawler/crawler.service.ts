@@ -152,6 +152,8 @@ export class CrawlerService {
             storageType,
             brand: item.brand,
             detailUrl: item.detail_url,
+            grade: item.metadata.grade || null,
+            searchKeywords: JSON.stringify(item.metadata),
             updatedAt: new Date(),
             status: 'ACTIVE'
           },
@@ -164,6 +166,8 @@ export class CrawlerService {
             storageType,
             brand: item.brand,
             detailUrl: item.detail_url,
+            grade: item.metadata.grade || null,
+            searchKeywords: JSON.stringify(item.metadata),
             status: 'ACTIVE'
           },
         });
