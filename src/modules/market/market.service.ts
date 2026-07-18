@@ -216,7 +216,10 @@ export class MarketService {
       where: {
         species,
         storageType,
-        category: { contains: catName },
+        OR: [
+          { category: { contains: catName } },
+          { name: { contains: catName } },
+        ],
       },
       select: {
         itemId: true,
