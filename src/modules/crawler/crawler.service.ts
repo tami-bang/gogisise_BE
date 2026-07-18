@@ -141,6 +141,8 @@ export class CrawlerService {
 
     return await this.prisma.$transaction(async (tx) => {
       for (const item of data.items) {
+        const itemSpecies = item.metadata.species || species;
+        const itemStorageType = item.metadata.storage_type || storageType;
         // 1. 기존 상품 Upsert
         const marketItem = await tx.marketItem.upsert({
           where: { goodsNo: item.goodsNo },
@@ -148,8 +150,8 @@ export class CrawlerService {
             name: item.name,
             price: item.price,
             category: data.category_path,
-            species,
-            storageType,
+            species: itemSpecies,
+            storageType: itemStorageType,
             brand: item.brand,
             detailUrl: item.detail_url,
             grade: item.metadata.grade || null,
@@ -162,8 +164,8 @@ export class CrawlerService {
             name: item.name,
             price: item.price,
             category: data.category_path,
-            species,
-            storageType,
+            species: itemSpecies,
+            storageType: itemStorageType,
             brand: item.brand,
             detailUrl: item.detail_url,
             grade: item.metadata.grade || null,

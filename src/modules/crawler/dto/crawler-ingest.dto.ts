@@ -19,6 +19,8 @@ export class CrawlerIngestDto {
       expiry_date?: string;
       weight_kg?: number | null;
       sale_price?: number | null;
+      species?: 'BEEF' | 'PORK';
+      storage_type?: 'CHILLED' | 'FROZEN' | null;
       haccp?: string;
     };
   }>;
