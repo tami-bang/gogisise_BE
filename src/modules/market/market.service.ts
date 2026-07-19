@@ -93,55 +93,7 @@ export class MarketService {
           priceUnit: item.priceUnit,
         };
       })
-      .filter((mappedItem) => {
-        // 엄격한 카테고리-상품명 매칭 검사
-        const catParts = mappedItem.category
-          .split(/\s*>\s*|\s*,\s*/)
-          .filter(Boolean);
-        const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
-
-        const keywords = [
-          '안심',
-          '등심',
-          '채끝',
-          '목심',
-          '앞다리',
-          '부채살',
-          '우둔',
-          '홍두깨',
-          '설도',
-          '양지',
-          '차돌박이',
-          '치마살',
-          '업진살',
-          '사태',
-          '갈비',
-          '안창살',
-          '토시살',
-          '삼겹',
-          '뒷다리',
-          '항정',
-          '등심덧살',
-          '갈매기',
-        ];
-        const otherKeywords = keywords.filter((k) => k !== catName);
-
-        // 상품명에 다른 부위의 키워드가 들어있는 경우 제외 (오매핑 방지)
-        const hasOtherKeyword = otherKeywords.some((k) =>
-          mappedItem.name.includes(k),
-        );
-        if (hasOtherKeyword) return false;
-
-        // 상품명에 해당 카테고리 키워드가 포함되어 있는지 검증 (앞다리살인 경우 앞다리 포함 등 예외처리)
-        const hasCorrectKeyword =
-          mappedItem.name.includes(catName) ||
-          (catName === '우둔' && mappedItem.name.includes('우둔살')) ||
-          (catName === '앞다리살' && mappedItem.name.includes('앞다리')) ||
-          (catName === '설도' && mappedItem.name.includes('설깃'));
-
-        return hasCorrectKeyword;
-      })
-      .map(({ name, ...rest }) => rest); // name 필드는 응답 스펙 제외
+      .map(({ name, ...rest }) => rest); // 정규화된 ACTIVE 상품 전체를 서빙한다.
 
     return {
       dataStatus: 'CURRENT', // 데이터 최신성 플래그
