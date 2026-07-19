@@ -221,6 +221,7 @@ export class MarketService {
         salePrice: true,
         manufacturedAt: true,
         expiresAt: true,
+        updatedAt: true,
       },
       orderBy: { price: 'asc' },
     });
@@ -262,6 +263,13 @@ export class MarketService {
 
     // 대표 카테고리 정보 추출
     const displayName = catName;
+    const collectionTimestamps = [
+      ...strictFilteredRecords.map((record) => record.collectedAt.getTime()),
+      ...sourceItems.map((item) => item.updatedAt.getTime()),
+    ];
+    const lastCollectedAt = collectionTimestamps.length > 0
+      ? new Date(Math.max(...collectionTimestamps)).toISOString()
+      : null;
 
     return {
       itemId: `cat-${displayName}`,
@@ -273,6 +281,7 @@ export class MarketService {
       highestPrice,
       lowestPrice,
       participantCount: strictFilteredRecords.length,
+      lastCollectedAt,
       sourceRecords: mappedSourceRecords,
       sourceItems: filteredSourceItems.map((si) => ({
         itemId: si.itemId,
