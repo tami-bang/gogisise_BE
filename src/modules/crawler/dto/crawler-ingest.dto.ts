@@ -42,8 +42,9 @@ class CrawlerItemMetadataDto {
   @IsIn(['1++', '1+', '1'])
   grade?: string | null;
 
+  @IsOptional()
   @IsString()
-  mfg_date: string;
+  mfg_date?: string | null;
 
   @IsOptional()
   @IsString()

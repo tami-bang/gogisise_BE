@@ -193,6 +193,10 @@ export class CrawlerService {
       };
     });
 
+    this.logger.log(
+      `Date mapping: manufacturedAt=${preparedItems.filter((item) => item.manufacturedAt).length}/${preparedItems.length}, expiresAt=${preparedItems.filter((item) => item.expiresAt).length}/${preparedItems.length}`,
+    );
+
     return await this.prisma.$transaction(
       async (tx) => {
         // 갱신 전에 기존 가격을 한 번만 읽어 previousPrice를 보존한다.
@@ -237,8 +241,8 @@ export class CrawlerService {
           "ageMonths" = EXCLUDED."ageMonths",
           "weightKg" = EXCLUDED."weightKg",
           "salePrice" = EXCLUDED."salePrice",
-          "manufacturedAt" = EXCLUDED."manufacturedAt",
-          "expiresAt" = EXCLUDED."expiresAt",
+          "manufacturedAt" = COALESCE(EXCLUDED."manufacturedAt", "Market_Items"."manufacturedAt"),
+          "expiresAt" = COALESCE(EXCLUDED."expiresAt", "Market_Items"."expiresAt"),
           "searchKeywords" = EXCLUDED."searchKeywords",
           "updatedAt" = CURRENT_TIMESTAMP
         RETURNING "itemId", "goodsNo"
