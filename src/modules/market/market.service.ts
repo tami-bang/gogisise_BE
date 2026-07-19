@@ -229,6 +229,57 @@ export class MarketService {
       orderBy: { price: 'asc' },
     });
 
+    // 카드별 전일 변동과 7일 차트를 N+1 없이 계산한다. 먼저 해당 부위의 최근
+    // 7개 기록일만 찾고, 그 날짜 범위의 모든 상품 가격을 한 번에 조회한다.
+    const sourceItemIds = sourceItems.map((item) => item.itemId);
+    const recentMarketDates = sourceItemIds.length > 0
+      ? await this.prisma.marketItemPrice.findMany({
+          where: { itemId: { in: sourceItemIds } },
+          distinct: ['marketDate'],
+          orderBy: { marketDate: 'desc' },
+          take: 7,
+          select: { marketDate: true },
+        })
+      : [];
+    const historyRows = recentMarketDates.length > 0
+      ? await this.prisma.marketItemPrice.findMany({
+          where: {
+            itemId: { in: sourceItemIds },
+            marketDate: { in: recentMarketDates.map((row) => row.marketDate) },
+          },
+          orderBy: [{ itemId: 'asc' }, { marketDate: 'desc' }],
+          select: { itemId: true, marketDate: true, price: true },
+        })
+      : [];
+
+    const historyByItem = new Map<
+      string,
+      Array<{ marketDate: Date; price: number | null }>
+    >();
+    for (const row of historyRows) {
+      const itemHistory = historyByItem.get(row.itemId) ?? [];
+      itemHistory.push({ marketDate: row.marketDate, price: row.price });
+      historyByItem.set(row.itemId, itemHistory);
+    }
+
+    const dailyPrices = new Map<string, number[]>();
+    for (const row of historyRows) {
+      if (row.price === null) continue;
+      const marketDate = row.marketDate.toISOString().split('T')[0];
+      const pricesForDate = dailyPrices.get(marketDate) ?? [];
+      pricesForDate.push(row.price);
+      dailyPrices.set(marketDate, pricesForDate);
+    }
+    const priceHistory = Array.from(dailyPrices.entries())
+      .map(([marketDate, dailyValues]) => ({
+        marketDate,
+        price: Math.round(
+          dailyValues.reduce((sum, price) => sum + price, 0) /
+            dailyValues.length,
+        ),
+      }))
+      .sort((a, b) => a.marketDate.localeCompare(b.marketDate));
+
     // 카테고리는 수집 단계에서 이미 정규화되어 있다. 상품명에 부위명이 반복되지
     // 않는 정상 상품까지 제거하던 키워드 기반 2차 필터는 적용하지 않는다.
     const filteredSourceItems = sourceItems;
@@ -249,6 +300,18 @@ export class MarketService {
         : 0;
 
     const finalAverage = averagePrice || fallbackPrice;
+    const latestHistoryPoint = priceHistory.at(-1);
+    const previousHistoryPoint = priceHistory.at(-2);
+    const categoryChangeAmount =
+      latestHistoryPoint && previousHistoryPoint
+        ? latestHistoryPoint.price - previousHistoryPoint.price
+        : 0;
+    const categoryTrendStatus =
+      categoryChangeAmount > 0
+        ? 'UP'
+        : categoryChangeAmount < 0
+          ? 'DOWN'
+          : 'UNCHANGED';
 
     const highestPrice =
       prices.length > 0
@@ -279,26 +342,48 @@ export class MarketService {
       displayName,
       grade: null,
       averagePrice: finalAverage,
-      changeAmount: 0,
-      trendStatus: 'UNCHANGED',
+      changeAmount: categoryChangeAmount,
+      trendStatus: categoryTrendStatus,
       highestPrice,
       lowestPrice,
       participantCount: strictFilteredRecords.length,
       lastCollectedAt,
+      priceHistory,
       sourceRecords: mappedSourceRecords,
-      sourceItems: filteredSourceItems.map((si) => ({
-        itemId: si.itemId,
-        name: si.name,
-        grade: si.grade,
-        brand: si.brand || null,
-        detailUrl: si.detailUrl,
-        price: si.price,
-        ageInMonths: si.ageMonths,
-        manufacturedAt: si.manufacturedAt,
-        expiresAt: si.expiresAt,
-        weightKg: Number(si.weightKg),
-        salePrice: si.salePrice,
-      })),
+      sourceItems: filteredSourceItems.map((si) => {
+        const itemHistory = historyByItem.get(si.itemId) ?? [];
+        const latestPrice = itemHistory[0]?.price ?? si.price;
+        const previousPrice = itemHistory[1]?.price ?? null;
+        const changeAmount =
+          latestPrice !== null && previousPrice !== null
+            ? latestPrice - previousPrice
+            : null;
+        const trendStatus =
+          changeAmount === null
+            ? null
+            : changeAmount > 0
+              ? 'UP'
+              : changeAmount < 0
+                ? 'DOWN'
+                : 'UNCHANGED';
+
+        return {
+          itemId: si.itemId,
+          name: si.name,
+          grade: si.grade,
+          brand: si.brand || null,
+          detailUrl: si.detailUrl,
+          price: si.price,
+          previousPrice,
+          changeAmount,
+          trendStatus,
+          ageInMonths: si.ageMonths,
+          manufacturedAt: si.manufacturedAt,
+          expiresAt: si.expiresAt,
+          weightKg: Number(si.weightKg),
+          salePrice: si.salePrice,
+        };
+      }),
     };
   }
 
