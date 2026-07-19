@@ -249,7 +249,10 @@ export class CrawlerService {
         );
         const priceRows = preparedItems.map(
           (item) => Prisma.sql`(
-        gen_random_uuid(), ${itemIdByGoodsNo.get(item.goodsNo)}, ${today},
+        gen_random_uuid(), 
+        -- 📌 한국어 주석: PostgreSQL에서 텍스트 문자열(text)을 UUID 타입 컬럼에 넣을 수 있도록 명시적으로 형변환(::uuid)을 해줍니다.
+        ${itemIdByGoodsNo.get(item.goodsNo)}::uuid, 
+        ${today},
         ${item.price}, ${previousPriceByGoodsNo.get(item.goodsNo) ?? null},
         CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
       )`,
