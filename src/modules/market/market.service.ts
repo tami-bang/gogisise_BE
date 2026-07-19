@@ -1,6 +1,9 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
-import { MarketItemsDataResponseDto } from './dto/market-response.dto';
+import {
+  MarketItemsDataResponseDto,
+  PriceHistoryDataResponseDto,
+} from './dto/market-response.dto';
 
 @Injectable()
 export class MarketService {
@@ -514,39 +517,90 @@ export class MarketService {
   /**
    * 특정 품목의 가격 이력(차트용) 반환
    */
-  async getItemPriceHistory(itemId: string) {
-    const item = await this.prisma.marketItem.findUnique({
-      where: { itemId },
-    });
+  async getItemPriceHistory(itemId: string): Promise<PriceHistoryDataResponseDto> {
+    // 동일 스냅샷에서 상품 정보, 변동 계산용 최근 2건, 차트용 최근 7건을
+    // 조회한다. `(itemId, marketDate)` 복합 유니크 인덱스가 DESC 역방향
+    // 스캔에 사용되므로 전체 가격 이력을 메모리에 올리지 않는다.
+    const [item, latestRecords, recentRecords] = await this.prisma.$transaction([
+      this.prisma.marketItem.findUnique({
+        where: { itemId },
+        select: {
+          itemId: true,
+          displayName: true,
+          name: true,
+          price: true,
+        },
+      }),
+      this.prisma.marketItemPrice.findMany({
+        where: { itemId },
+        orderBy: { marketDate: 'desc' },
+        take: 2,
+        select: { marketDate: true, price: true },
+      }),
+      this.prisma.marketItemPrice.findMany({
+        where: { itemId },
+        orderBy: { marketDate: 'desc' },
+        take: 7,
+        select: { marketDate: true, price: true },
+      }),
+    ]);
 
     if (!item) {
       throw new NotFoundException(`품목(ID: ${itemId})을 찾을 수 없습니다.`);
     }
 
-    const history = await this.prisma.marketItemPrice.findMany({
-      where: { itemId },
-      orderBy: { marketDate: 'asc' }, // 과거부터 현재 순서
-    });
+    const currentRecord = latestRecords[0] ?? null;
+    const previousRecord = latestRecords[1] ?? null;
+    const currentPrice = currentRecord?.price ?? item.price ?? null;
+    const previousPrice = previousRecord?.price ?? null;
+    const changeAmount =
+      currentPrice !== null && previousPrice !== null
+        ? currentPrice - previousPrice
+        : null;
+    const changeRate =
+      changeAmount !== null && previousPrice !== null && previousPrice > 0
+        ? Number(((changeAmount / previousPrice) * 100).toFixed(2))
+        : null;
+    const trendStatus =
+      changeAmount === null
+        ? null
+        : changeAmount > 0
+          ? ('UP' as const)
+          : changeAmount < 0
+            ? ('DOWN' as const)
+            : ('UNCHANGED' as const);
+
+    const points = recentRecords.length > 0
+      ? recentRecords
+          .slice()
+          .reverse()
+          .map((record) => ({
+            marketDate: record.marketDate.toISOString().split('T')[0],
+            price: record.price,
+          }))
+      : item.price
+        ? [{ marketDate: new Date().toISOString().split('T')[0], price: item.price }]
+        : [];
 
     return {
       item: {
         itemId: item.itemId,
         displayName: item.displayName || item.name,
       },
-      points:
-        history.length > 0
-          ? history.map((h) => ({
-              marketDate: h.marketDate.toISOString().split('T')[0],
-              price: h.price,
-            }))
-          : item.price
-            ? [
-                {
-                  marketDate: new Date().toISOString().split('T')[0],
-                  price: item.price,
-                },
-              ]
-            : [],
+      summary: {
+        currentMarketDate: currentRecord
+          ? currentRecord.marketDate.toISOString().split('T')[0]
+          : null,
+        previousMarketDate: previousRecord
+          ? previousRecord.marketDate.toISOString().split('T')[0]
+          : null,
+        currentPrice,
+        previousPrice,
+        changeAmount,
+        changeRate,
+        trendStatus,
+      },
+      points,
     };
   }
 

@@ -1,6 +1,9 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { MarketService } from './market.service';
-import { MarketItemsDataResponseDto } from './dto/market-response.dto';
+import {
+  MarketItemsDataResponseDto,
+  PriceHistoryDataResponseDto,
+} from './dto/market-response.dto';
 
 @Controller('api/v1/market/items')
 export class MarketController {
@@ -70,7 +73,11 @@ export class MarketController {
   }
 
   @Get(':itemId/price-history')
-  async getItemPriceHistory(@Param('itemId') itemId: string) {
+  async getItemPriceHistory(@Param('itemId') itemId: string): Promise<{
+    success: true;
+    data: PriceHistoryDataResponseDto;
+    meta: { requestId: string; servedAt: string };
+  }> {
     const data = await this.marketService.getItemPriceHistory(itemId);
     return {
       success: true,

@@ -25,3 +25,27 @@ export class MarketItemsDataResponseDto {
   marketDate: string;
   items: MarketItemResponseDto[];
 }
+
+export class PriceHistoryPointResponseDto {
+  marketDate: string;
+  price: number | null;
+}
+
+export class PriceChangeSummaryResponseDto {
+  currentMarketDate: string | null;
+  previousMarketDate: string | null;
+  currentPrice: number | null;
+  previousPrice: number | null;
+  changeAmount: number | null;
+  changeRate: number | null;
+  trendStatus: 'UP' | 'DOWN' | 'UNCHANGED' | null;
+}
+
+export class PriceHistoryDataResponseDto {
+  item: {
+    itemId: string;
+    displayName: string;
+  };
+  summary: PriceChangeSummaryResponseDto;
+  points: PriceHistoryPointResponseDto[];
+}
