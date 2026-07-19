@@ -17,7 +17,7 @@ BEGIN
            OR "price" <= 0
            OR "salePrice" IS NULL
            OR "salePrice" <= 0
-           OR ("species" = 'BEEF' AND ("ageMonths" IS NULL OR "ageMonths" NOT BETWEEN 1 AND 40))
+           OR ("species" = 'BEEF' AND "ageMonths" IS NOT NULL AND "ageMonths" NOT BETWEEN 1 AND 40)
            OR ("species" = 'PORK' AND "ageMonths" IS NOT NULL)
            OR ("grade" IS NOT NULL AND "grade" NOT IN ('1++', '1+', '1'))
            OR ("expiresAt" IS NOT NULL AND "manufacturedAt" IS NOT NULL AND "expiresAt" <= "manufacturedAt")
@@ -51,7 +51,7 @@ ALTER TABLE "Market_Items"
   ),
   ADD CONSTRAINT "ck_market_items_species_age" CHECK (
     "status" = 'INACTIVE'
-    OR ("species" = 'BEEF' AND "ageMonths" BETWEEN 1 AND 40)
+    OR ("species" = 'BEEF' AND ("ageMonths" IS NULL OR "ageMonths" BETWEEN 1 AND 40))
     OR ("species" = 'PORK' AND "ageMonths" IS NULL)
   ),
   ADD CONSTRAINT "ck_market_items_storage_type" CHECK (
