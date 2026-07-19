@@ -39,13 +39,13 @@ model MarketItem {
   detailUrl      String    @db.VarChar
   status         String    @default("ACTIVE") @db.VarChar
   price          Int       @db.Integer
-  species        String    @db.VarChar
-  storageType    String    @db.VarChar
+  species        String?   @db.VarChar
+  storageType    String?   @db.VarChar
   category       String    @db.VarChar
   displayName    String?   @db.VarChar
   grade          String?   @db.VarChar
   ageMonths      Int?      @db.Integer
-  weightKg       Decimal   @db.Decimal(10, 3)
+  weightKg       Decimal?  @db.Decimal(10, 3)
   salePrice      Int?      @db.Integer
   manufacturedAt DateTime? @db.Date
   expiresAt      DateTime? @db.Date
