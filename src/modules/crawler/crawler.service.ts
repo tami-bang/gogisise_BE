@@ -272,6 +272,32 @@ export class CrawlerService {
     );
   }
 
+  async finalizeCrawl(goodsNos: string[]): Promise<number> {
+    const uniqueGoodsNos = Array.from(new Set(goodsNos.filter(Boolean)));
+    if (uniqueGoodsNos.length === 0) {
+      throw new InternalServerErrorException(
+        '수집 상품 목록이 비어 있어 단종 동기화를 중단했습니다.',
+      );
+    }
+
+    const collectedGoodsNosJson = JSON.stringify(uniqueGoodsNos);
+    const deactivated = await this.prisma.$executeRaw(Prisma.sql`
+      UPDATE "Market_Items" AS item
+      SET "status" = 'INACTIVE', "updatedAt" = CURRENT_TIMESTAMP
+      WHERE item."status" = 'ACTIVE'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements_text(${collectedGoodsNosJson}::jsonb) AS collected("goodsNo")
+          WHERE collected."goodsNo" = item."goodsNo"
+        )
+    `);
+
+    this.logger.log(
+      `Crawl finalized with ${uniqueGoodsNos.length} active goods; ${deactivated} items deactivated.`,
+    );
+    return deactivated;
+  }
+
   async processCategoryTree(dto: IngestCategoryTreeDto) {
     this.logger.log(
       `Processing category tree sync with ${dto.categories?.length || 0} nodes.`,

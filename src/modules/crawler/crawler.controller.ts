@@ -9,6 +9,7 @@ import {
 import { CrawlerService } from './crawler.service';
 import { IngestCategoryTreeDto } from './dto/category-tree.dto';
 import { IngestPayloadDto } from './dto/crawler-ingest.dto';
+import { FinalizeCrawlDto } from './dto/finalize-crawl.dto';
 
 @Controller('crawler')
 export class CrawlerController {
@@ -34,6 +35,13 @@ export class CrawlerController {
 
     this.logger.log(`Ingest complete. Upserted ${totalUpserted} total items.`);
     return { success: true, upserted: totalUpserted };
+  }
+
+  @Post('finalize')
+  @HttpCode(HttpStatus.OK)
+  async finalize(@Body() dto: FinalizeCrawlDto) {
+    const deactivated = await this.crawlerService.finalizeCrawl(dto.goodsNos);
+    return { success: true, deactivated };
   }
 
   @Post('category-tree')
