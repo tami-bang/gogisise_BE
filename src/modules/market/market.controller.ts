@@ -1,12 +1,17 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { MarketService } from './market.service';
+import { MarketItemsDataResponseDto } from './dto/market-response.dto';
 
 @Controller('api/v1/market/items')
 export class MarketController {
   constructor(private readonly marketService: MarketService) {}
 
   @Get()
-  async getAllMarketItems() {
+  async getAllMarketItems(): Promise<{
+    success: true;
+    data: MarketItemsDataResponseDto;
+    meta: { requestId: string; servedAt: string };
+  }> {
     const data = await this.marketService.getAllMarketItems();
     return {
       success: true,
@@ -24,7 +29,10 @@ export class MarketController {
     @Query('depth') depth?: string,
   ) {
     const depthNum = depth ? parseInt(depth, 10) : undefined;
-    const data = await this.marketService.getCategories({ parentNo, depth: depthNum });
+    const data = await this.marketService.getCategories({
+      parentNo,
+      depth: depthNum,
+    });
     return {
       success: true,
       data,
@@ -36,9 +44,7 @@ export class MarketController {
   }
 
   @Get('calculations')
-  async getCategoryCalculations(
-    @Query('categoryPath') categoryPath: string,
-  ) {
+  async getCategoryCalculations(@Query('categoryPath') categoryPath: string) {
     const data = await this.marketService.getCategoryCalculations(categoryPath);
     return {
       success: true,
