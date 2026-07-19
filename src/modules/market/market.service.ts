@@ -55,11 +55,20 @@ export class MarketService {
             ? 'FROZEN'
             : item.storageType;
 
-        const categoryParts = item.category?.split(' > ');
-        const parsedDisplayName =
+        // 운영 데이터에는 과거 쉼표 구분 경로와 표준 ` > ` 경로가 함께 존재한다.
+        const categoryParts = item.category
+          ?.split(/\s*>\s*|\s*,\s*/)
+          .filter(Boolean);
+        const parsedCategory =
           categoryParts && categoryParts.length > 0
             ? categoryParts[categoryParts.length - 1]
-            : item.displayName;
+            : item.category;
+        const parsedDisplayName =
+          item.displayName ||
+          item.name ||
+          (categoryParts && categoryParts.length > 0
+            ? categoryParts[categoryParts.length - 1]
+            : '');
 
         return {
           itemId: item.itemId,
@@ -67,7 +76,7 @@ export class MarketService {
           priceId: latestPrice ? latestPrice.priceId : null,
           species: item.species || parsedSpecies,
           storageType: item.storageType || parsedStorageType,
-          category: item.category,
+          category: parsedCategory,
           displayName: item.displayName || parsedDisplayName,
           searchKeywords: item.searchKeywords || '', // DB에서 꺼낸 값 반환 (Null 방어)
           grade: item.grade,
@@ -86,7 +95,9 @@ export class MarketService {
       })
       .filter((mappedItem) => {
         // 엄격한 카테고리-상품명 매칭 검사
-        const catParts = mappedItem.category.split(' > ');
+        const catParts = mappedItem.category
+          .split(/\s*>\s*|\s*,\s*/)
+          .filter(Boolean);
         const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
 
         const keywords = [
