@@ -74,26 +74,30 @@ describe('CrawlerService bulk ingest', () => {
     expect(priceSql.values).toContain(null);
   });
 
-  it('전체 수집 목록에 없는 ACTIVE 상품만 비활성화한다', async () => {
-    const prisma = { $executeRaw: jest.fn().mockResolvedValue(7) };
+  it('전체 수집 상품은 활성화하고 목록에 없는 상품만 비활성화한다', async () => {
+    const prisma = {
+      $queryRaw: jest
+        .fn()
+        .mockResolvedValue([{ activated: BigInt(3), deactivated: BigInt(7) }]),
+    };
     const service = new CrawlerService(prisma as any, {} as any);
 
     await expect(
       service.finalizeCrawl(['GOODS-2', 'GOODS-1', 'GOODS-1']),
     ).resolves.toBe(7);
 
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
-    const sql = prisma.$executeRaw.mock.calls[0][0];
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    const sql = prisma.$queryRaw.mock.calls[0][0];
     expect(sql.values).toContain('["GOODS-2","GOODS-1"]');
   });
 
   it('빈 전체 수집 목록으로는 비활성화를 실행하지 않는다', async () => {
-    const prisma = { $executeRaw: jest.fn() };
+    const prisma = { $queryRaw: jest.fn() };
     const service = new CrawlerService(prisma as any, {} as any);
 
     await expect(service.finalizeCrawl([])).rejects.toThrow(
       '수집 상품 목록이 비어 있어 단종 동기화를 중단했습니다.',
     );
-    expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    expect(prisma.$queryRaw).not.toHaveBeenCalled();
   });
 });

@@ -284,19 +284,41 @@ export class CrawlerService {
     }
 
     const collectedGoodsNosJson = JSON.stringify(uniqueGoodsNos);
-    const deactivated = await this.prisma.$executeRaw(Prisma.sql`
-      UPDATE "Market_Items" AS item
-      SET "status" = 'INACTIVE', "updatedAt" = CURRENT_TIMESTAMP
-      WHERE item."status" = 'ACTIVE'
-        AND NOT EXISTS (
-          SELECT 1
-          FROM jsonb_array_elements_text(${collectedGoodsNosJson}::jsonb) AS collected("goodsNo")
-          WHERE collected."goodsNo" = item."goodsNo"
-        )
+    const [syncResult] = await this.prisma.$queryRaw<
+      Array<{ activated: bigint; deactivated: bigint }>
+    >(Prisma.sql`
+      WITH collected AS MATERIALIZED (
+        SELECT jsonb_array_elements_text(${collectedGoodsNosJson}::jsonb) AS "goodsNo"
+      ),
+      activated AS (
+        UPDATE "Market_Items" AS item
+        SET "status" = 'ACTIVE', "updatedAt" = CURRENT_TIMESTAMP
+        WHERE item."status" = 'INACTIVE'
+          AND EXISTS (
+            SELECT 1 FROM collected
+            WHERE collected."goodsNo" = item."goodsNo"
+          )
+        RETURNING 1
+      ),
+      deactivated AS (
+        UPDATE "Market_Items" AS item
+        SET "status" = 'INACTIVE', "updatedAt" = CURRENT_TIMESTAMP
+        WHERE item."status" = 'ACTIVE'
+          AND NOT EXISTS (
+            SELECT 1 FROM collected
+            WHERE collected."goodsNo" = item."goodsNo"
+          )
+        RETURNING 1
+      )
+      SELECT
+        (SELECT COUNT(*) FROM activated) AS "activated",
+        (SELECT COUNT(*) FROM deactivated) AS "deactivated"
     `);
+    const activated = Number(syncResult?.activated ?? 0);
+    const deactivated = Number(syncResult?.deactivated ?? 0);
 
     this.logger.log(
-      `Crawl finalized with ${uniqueGoodsNos.length} active goods; ${deactivated} items deactivated.`,
+      `Crawl finalized with ${uniqueGoodsNos.length} collected goods; ${activated} items activated and ${deactivated} items deactivated.`,
     );
     return deactivated;
   }
