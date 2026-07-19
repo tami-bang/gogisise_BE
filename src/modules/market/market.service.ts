@@ -145,42 +145,22 @@ export class MarketService {
       take: 200, // 여유 있게 수집
     });
 
-    const strictFilteredRecords = rawRecords.filter((r) => {
-      const isBeefRecord = r.species === 'BEEF';
+    // 운영 중 사용된 `>`, `,`, `/` 경로를 모두 허용하되 실제 조회 키는 마지막
+    // 부위명으로 통일합니다. 공급처/브랜드는 매물 속성이지 부위 조회 조건이 아닙니다.
+    const categorySeparator = categoryPath.includes('>')
+      ? /\s*>\s*/
+      : categoryPath.includes('/')
+        ? /\s*\/\s*/
+        : /\s*,\s*/;
+    const categoryParts = categoryPath
+      .split(categorySeparator)
+      .map((part) => part.trim())
+      .filter(Boolean);
+    const catName = categoryParts[categoryParts.length - 1] || '';
 
-      // 하위분류 결정 (국내산 한우 / 국내산 한우 암소 / 국내산 돈육)
-      let subCategory = '';
-      if (isBeefRecord) {
-        const isCow =
-          r.gender === '암소' ||
-          r.rawProductName.includes('암소') ||
-          r.rawProductName.includes('(암)');
-        subCategory = isCow ? '국내산 한우 암소' : '국내산 한우';
-      } else {
-        subCategory = '국내산 돈육';
-      }
-
-      const speciesPrefix = isBeefRecord ? '국내산 한우' : '국내산 돈육';
-      const storagePrefix = r.storageType === 'CHILLED' ? '냉장' : '냉동';
-
-      // 카테고리 부위명 표준 매핑 규칙
-      let rawCat = r.category;
-      if (r.species === 'BEEF') {
-        if (rawCat === '우둔살') rawCat = '우둔';
-        if (rawCat === '앞다리') rawCat = '앞다리살';
-        if (rawCat === '설깃') rawCat = '설도';
-        if (rawCat === '양지머리' || rawCat.includes('양지')) rawCat = '양지';
-        if (rawCat === '갈비살') rawCat = '갈비';
-      } else if (r.species === 'PORK') {
-        if (rawCat === '앞다리살') rawCat = '앞다리';
-        if (rawCat === '뒷다리살') rawCat = '뒷다리';
-        if (rawCat === '삼겹살') rawCat = '삼겹';
-        if (rawCat === '갈비살') rawCat = '갈비';
-      }
-
-      const reconstructedPath = `${speciesPrefix} > ${subCategory} > ${storagePrefix} > ${rawCat}`;
-      return reconstructedPath === categoryPath;
-    });
+    const strictFilteredRecords = rawRecords.filter(
+      (record) => record.category.trim() === catName,
+    );
 
     // 부위명 매핑 고도화 (Name Mapping)
     const mappedSourceRecords = strictFilteredRecords.map((r) => {
@@ -219,27 +199,15 @@ export class MarketService {
       };
     });
 
-    const catParts = categoryPath.split(' > ');
-    const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
-    const categoryScope = isPork ? '국내산 돈육' : '국내산 한우 암소';
-    const storageIndex = catParts.findIndex(
-      (part) => part === '냉장' || part === '냉동',
-    );
-    const sourceGroup = storageIndex > 0 ? catParts[storageIndex - 1] : null;
-
     // sourceItems: 원본 MarketItem 리스트 (금천미트 바로가기용)
-    // 기존 데이터에는 축종/보관상태가 비어 있을 수 있으므로
-    // 저장된 카테고리 또는 원본 상품명의 마지막 부위명으로 조회한다.
+    // 정규화된 축종·보관상태와 카테고리 마지막 부위명으로 조회한다. 브랜드 노드를
+    // 조건으로 사용하면 같은 부위의 다른 공급처 매물이 누락되므로 의도적으로 제외한다.
     const sourceItems = await this.prisma.marketItem.findMany({
       where: {
-        AND: [
-          { status: 'ACTIVE' },
-          { category: { contains: categoryScope } },
-          ...(sourceGroup && sourceGroup !== categoryScope
-            ? [{ category: { contains: sourceGroup } }]
-            : []),
-          { category: { endsWith: catName } },
-        ],
+        status: 'ACTIVE',
+        species,
+        storageType,
+        category: { endsWith: catName },
       },
       select: {
         itemId: true,
@@ -257,44 +225,9 @@ export class MarketService {
       orderBy: { price: 'asc' },
     });
 
-    const filteredSourceItems = sourceItems.filter((si) => {
-      const keywords = [
-        '안심',
-        '등심',
-        '채끝',
-        '목심',
-        '앞다리',
-        '부채살',
-        '우둔',
-        '홍두깨',
-        '설도',
-        '양지',
-        '차돌박이',
-        '치마살',
-        '업진살',
-        '사태',
-        '갈비',
-        '안창살',
-        '토시살',
-        '삼겹',
-        '뒷다리',
-        '항정',
-        '등심덧살',
-        '갈매기',
-      ];
-      const otherKeywords = keywords.filter((k) => k !== catName);
-
-      const hasOtherKeyword = otherKeywords.some((k) => si.name.includes(k));
-      if (hasOtherKeyword) return false;
-
-      const hasCorrectKeyword =
-        si.name.includes(catName) ||
-        (catName === '우둔' && si.name.includes('우둔살')) ||
-        (catName === '앞다리살' && si.name.includes('앞다리')) ||
-        (catName === '설도' && si.name.includes('설깃'));
-
-      return hasCorrectKeyword;
-    });
+    // 카테고리는 수집 단계에서 이미 정규화되어 있다. 상품명에 부위명이 반복되지
+    // 않는 정상 상품까지 제거하던 키워드 기반 2차 필터는 적용하지 않는다.
+    const filteredSourceItems = sourceItems;
 
     // 시세 가격 지표 연산
     const prices = strictFilteredRecords.map((r) => r.pricePerKg);
@@ -328,7 +261,7 @@ export class MarketService {
           : 0;
 
     // 대표 카테고리 정보 추출
-    const displayName = catParts[catParts.length - 1];
+    const displayName = catName;
 
     return {
       itemId: `cat-${displayName}`,
