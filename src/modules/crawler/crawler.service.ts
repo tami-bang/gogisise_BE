@@ -12,6 +12,7 @@ import CircuitBreaker = require('opossum');
 import { CrawlerTaskPayloadDto } from './dto/crawler-task.dto';
 import { CrawlerIngestDto } from './dto/crawler-ingest.dto';
 import { IngestCategoryTreeDto } from './dto/category-tree.dto';
+import { Prisma } from '@prisma/client';
 
 const parseSourceDate = (value?: string | null): Date | null => {
   if (!value) return null;
@@ -21,9 +22,9 @@ const parseSourceDate = (value?: string | null): Date | null => {
   const month = Number(digits.slice(4, 6));
   const day = Number(digits.slice(6, 8));
   const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year
-    && date.getUTCMonth() === month - 1
-    && date.getUTCDate() === day
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
     ? date
     : null;
 };
@@ -31,7 +32,8 @@ const parseSourceDate = (value?: string | null): Date | null => {
 @Injectable()
 export class CrawlerService {
   private readonly logger = new Logger(CrawlerService.name);
-  private readonly fastapiBase = process.env.FASTAPI_URL || 'http://fastapi:8000';
+  private readonly fastapiBase =
+    process.env.FASTAPI_URL || 'http://fastapi:8000';
   private readonly circuitBreaker: any;
 
   constructor(
@@ -43,7 +45,10 @@ export class CrawlerService {
       errorThresholdPercentage: 50,
       resetTimeout: 30000,
     };
-    this.circuitBreaker = new CircuitBreaker(this.publishToFastAPI.bind(this), breakerOptions);
+    this.circuitBreaker = new CircuitBreaker(
+      this.publishToFastAPI.bind(this),
+      breakerOptions,
+    );
     this.circuitBreaker.fallback(() => {
       this.logger.warn('FastAPI circuit open – fallback engaged');
       throw new InternalServerErrorException('FastAPI unavailable');
@@ -55,7 +60,7 @@ export class CrawlerService {
     try {
       this.logger.log('파이썬 크롤러(peek 모드) 호출 중...');
       const response = await firstValueFrom(this.http.get(url));
-      
+
       if (!response.data.success) {
         throw new Error(response.data.error || 'Unknown peek error');
       }
@@ -71,7 +76,9 @@ export class CrawlerService {
     const requestId = uuidv4();
     const payload: CrawlerTaskPayloadDto = { requestId, categories };
 
-    this.logger.log(`파이썬 크롤러(crawl 모드) 작업 발행 중... requestId: ${requestId}`);
+    this.logger.log(
+      `파이썬 크롤러(crawl 모드) 작업 발행 중... requestId: ${requestId}`,
+    );
 
     // Prisma $transaction을 활용하여 DB 레코드 생성 후 Redis 발행 진행
     await this.prisma.$transaction(async (tx) => {
@@ -96,19 +103,25 @@ export class CrawlerService {
     return { requestId };
   }
 
-  private async publishToFastAPI(payload: CrawlerTaskPayloadDto): Promise<void> {
+  private async publishToFastAPI(
+    payload: CrawlerTaskPayloadDto,
+  ): Promise<void> {
     const url = `${this.fastapiBase}/crawler/crawl`;
     try {
       const response = await firstValueFrom(this.http.post(url, payload));
-      this.logger.log(`Crawl task queued on FastAPI: taskId=${response.data.taskId}`);
+      this.logger.log(
+        `Crawl task queued on FastAPI: taskId=${response.data.taskId}`,
+      );
     } catch (err) {
       const e = err as AxiosError;
       // 실패 시 트랜잭션 외부에 기록될 수 있도록 따로 상태 업데이트 처리
-      await this.prisma.crawlerTask.update({
-        where: { id: payload.requestId },
-        data: { status: 'FAILED' },
-      }).catch(dbErr => this.logger.error('Outbox 실패 마킹 실패', dbErr));
-      
+      await this.prisma.crawlerTask
+        .update({
+          where: { id: payload.requestId },
+          data: { status: 'FAILED' },
+        })
+        .catch((dbErr) => this.logger.error('Outbox 실패 마킹 실패', dbErr));
+
       this.logger.error('Failed to enqueue crawl on FastAPI', e.message);
       throw e; // Circuit breaker 카운트 증가
     }
@@ -145,107 +158,145 @@ export class CrawlerService {
   }
 
   async processIngestedData(data: CrawlerIngestDto) {
-    this.logger.log(`Ingesting data for category: ${data.category_path} (${data.items.length} items)`);
+    this.logger.log(
+      `Ingesting data for category: ${data.category_path} (${data.items.length} items)`,
+    );
 
     const species = data.category_path.includes('돈육') ? 'PORK' : 'BEEF';
-    const storageType = data.category_path.includes('냉동') ? 'FROZEN' : 'CHILLED';
-    
+    const storageType = data.category_path.includes('냉동')
+      ? 'FROZEN'
+      : 'CHILLED';
+
     // DB의 @db.Date 에 맞게 오늘 날짜 자정 기준 Date 객체 생성
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    return await this.prisma.$transaction(async (tx) => {
-      for (const item of data.items) {
-        const itemSpecies = item.metadata.species || species;
-        const itemStorageType = item.metadata.storage_type || storageType;
-        const manufacturedAt = parseSourceDate(item.metadata.mfg_date);
-        const expiresAt = parseSourceDate(item.metadata.expiry_date);
-        const searchKeywords = [item.name, item.brand, data.category_path]
-          .filter(Boolean)
-          .join(' ');
-        // 1. 기존 상품 Upsert
-        const marketItem = await tx.marketItem.upsert({
-          where: { goodsNo: item.goodsNo },
-          update: { 
-            name: item.name,
-            price: item.price,
-            category: data.category_path,
-            species: itemSpecies,
-            storageType: itemStorageType,
-            brand: item.brand,
-            detailUrl: item.detail_url,
-            grade: item.metadata.grade || null,
-            ageMonths: item.metadata.age,
-            weightKg: item.metadata.weight_kg,
-            salePrice: item.metadata.sale_price,
-            manufacturedAt,
-            expiresAt,
-            searchKeywords,
-            status: 'ACTIVE'
-          },
-          create: {
-            goodsNo: item.goodsNo,
-            name: item.name,
-            price: item.price,
-            category: data.category_path,
-            species: itemSpecies,
-            storageType: itemStorageType,
-            brand: item.brand,
-            detailUrl: item.detail_url,
-            grade: item.metadata.grade || null,
-            ageMonths: item.metadata.age,
-            weightKg: item.metadata.weight_kg,
-            salePrice: item.metadata.sale_price,
-            manufacturedAt,
-            expiresAt,
-            searchKeywords,
-            status: 'ACTIVE'
-          },
-        });
+    const uniqueItems = Array.from(
+      new Map(data.items.map((item) => [item.goodsNo, item])).values(),
+    ).sort((left, right) => left.goodsNo.localeCompare(right.goodsNo));
+    const preparedItems = uniqueItems.map((item) => {
+      const itemSpecies = item.metadata.species || species;
+      const itemStorageType = item.metadata.storage_type || storageType;
+      const manufacturedAt = parseSourceDate(item.metadata.mfg_date);
+      const expiresAt = parseSourceDate(item.metadata.expiry_date);
+      const searchKeywords = [item.name, item.brand, data.category_path]
+        .filter(Boolean)
+        .join(' ');
 
-        // 2. 가격 이력(Market_Item_Prices) 적재 (오늘 날짜로 데이터 없으면 생성)
-        await tx.marketItemPrice.upsert({
-          where: {
-            itemId_marketDate: {
-              itemId: marketItem.itemId,
-              marketDate: today,
-            }
-          },
-          update: { price: item.price },
-          create: {
-            itemId: marketItem.itemId,
-            marketDate: today,
-            price: item.price,
-            previousPrice: marketItem.price // 기존 가격을 이전 가격으로 임시 저장
-          }
-        });
-      }
-    }, {
-      maxWait: 10000, // 10 seconds
-      timeout: 120000 // 120 seconds
+      return {
+        ...item,
+        itemSpecies,
+        itemStorageType,
+        manufacturedAt,
+        expiresAt,
+        searchKeywords,
+      };
     });
+
+    return await this.prisma.$transaction(
+      async (tx) => {
+        // 갱신 전에 기존 가격을 한 번만 읽어 previousPrice를 보존한다.
+        const existingItems = await tx.marketItem.findMany({
+          where: { goodsNo: { in: preparedItems.map((item) => item.goodsNo) } },
+          select: { goodsNo: true, price: true },
+        });
+        const previousPriceByGoodsNo = new Map(
+          existingItems.map((item) => [item.goodsNo, item.price]),
+        );
+
+        const marketItemRows = preparedItems.map(
+          (item) => Prisma.sql`(
+        gen_random_uuid(), ${item.goodsNo}, ${item.name}, ${item.brand},
+        ${item.detail_url}, 'ACTIVE', ${item.price}, ${item.itemSpecies},
+        ${item.itemStorageType}, ${data.category_path}, ${item.metadata.grade || null},
+        ${item.metadata.age}, ${item.metadata.weight_kg},
+        ${item.metadata.sale_price ?? null}, ${item.manufacturedAt},
+        ${item.expiresAt}, ${item.searchKeywords}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+      )`,
+        );
+
+        const upsertedItems = await tx.$queryRaw<
+          Array<{ itemId: string; goodsNo: string }>
+        >(Prisma.sql`
+        INSERT INTO "Market_Items" (
+          "itemId", "goodsNo", "name", "brand", "detailUrl", "status",
+          "price", "species", "storageType", "category", "grade", "ageMonths",
+          "weightKg", "salePrice", "manufacturedAt", "expiresAt",
+          "searchKeywords", "createdAt", "updatedAt"
+        ) VALUES ${Prisma.join(marketItemRows)}
+        ON CONFLICT ("goodsNo") DO UPDATE SET
+          "name" = EXCLUDED."name",
+          "brand" = EXCLUDED."brand",
+          "detailUrl" = EXCLUDED."detailUrl",
+          "status" = EXCLUDED."status",
+          "price" = EXCLUDED."price",
+          "species" = EXCLUDED."species",
+          "storageType" = EXCLUDED."storageType",
+          "category" = EXCLUDED."category",
+          "grade" = EXCLUDED."grade",
+          "ageMonths" = EXCLUDED."ageMonths",
+          "weightKg" = EXCLUDED."weightKg",
+          "salePrice" = EXCLUDED."salePrice",
+          "manufacturedAt" = EXCLUDED."manufacturedAt",
+          "expiresAt" = EXCLUDED."expiresAt",
+          "searchKeywords" = EXCLUDED."searchKeywords",
+          "updatedAt" = CURRENT_TIMESTAMP
+        RETURNING "itemId", "goodsNo"
+      `);
+
+        const itemIdByGoodsNo = new Map(
+          upsertedItems.map((item) => [item.goodsNo, item.itemId]),
+        );
+        const priceRows = preparedItems.map(
+          (item) => Prisma.sql`(
+        gen_random_uuid(), ${itemIdByGoodsNo.get(item.goodsNo)}, ${today},
+        ${item.price}, ${previousPriceByGoodsNo.get(item.goodsNo) ?? null},
+        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+      )`,
+        );
+
+        await tx.$executeRaw(Prisma.sql`
+        INSERT INTO "Market_Item_Prices" (
+          "priceId", "itemId", "marketDate", "price", "previousPrice",
+          "createdAt", "updatedAt"
+        ) VALUES ${Prisma.join(priceRows)}
+        ON CONFLICT ("itemId", "marketDate") DO UPDATE SET
+          "price" = EXCLUDED."price",
+          "updatedAt" = CURRENT_TIMESTAMP
+      `);
+      },
+      {
+        maxWait: 5000,
+        timeout: 30000,
+      },
+    );
   }
 
   async processCategoryTree(dto: IngestCategoryTreeDto) {
-    this.logger.log(`Processing category tree sync with ${dto.categories?.length || 0} nodes.`);
-    
-    return await this.prisma.$transaction(async (tx) => {
-      await tx.categoryTree.deleteMany();
+    this.logger.log(
+      `Processing category tree sync with ${dto.categories?.length || 0} nodes.`,
+    );
 
-      if (dto.categories && dto.categories.length > 0) {
-        await tx.categoryTree.createMany({
-          data: dto.categories.map((c) => ({
-            ctgNo: c.ctgNo,
-            name: c.name,
-            parentNo: c.parentNo,
-            depth: c.depth,
-            path: c.path,
-          })),
-        });
-      }
-    }, {
-      maxWait: 5000,
-      timeout: 30000,
-    });
+    return await this.prisma.$transaction(
+      async (tx) => {
+        await tx.categoryTree.deleteMany();
+
+        if (dto.categories && dto.categories.length > 0) {
+          await tx.categoryTree.createMany({
+            data: dto.categories.map((c) => ({
+              ctgNo: c.ctgNo,
+              name: c.name,
+              parentNo: c.parentNo,
+              depth: c.depth,
+              path: c.path,
+            })),
+          });
+        }
+      },
+      {
+        maxWait: 5000,
+        timeout: 30000,
+      },
+    );
   }
 }

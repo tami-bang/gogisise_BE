@@ -1,6 +1,14 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Logger } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Logger,
+} from '@nestjs/common';
 import { CrawlerService } from './crawler.service';
 import { IngestCategoryTreeDto } from './dto/category-tree.dto';
+import { IngestPayloadDto } from './dto/crawler-ingest.dto';
 
 @Controller('crawler')
 export class CrawlerController {
@@ -10,12 +18,11 @@ export class CrawlerController {
 
   @Post('ingest')
   @HttpCode(HttpStatus.OK)
-  async ingest(@Body('data') dataList: any[]) {
-    this.logger.log(`Received ${dataList?.length || 0} category results from crawler.`);
-    
-    if (!dataList || !Array.isArray(dataList)) {
-      return { success: false, message: 'Invalid payload' };
-    }
+  async ingest(@Body() payload: IngestPayloadDto) {
+    const dataList = payload.data;
+    this.logger.log(
+      `Received ${dataList?.length || 0} category results from crawler.`,
+    );
 
     let totalUpserted = 0;
     for (const data of dataList) {
@@ -32,7 +39,9 @@ export class CrawlerController {
   @Post('category-tree')
   @HttpCode(HttpStatus.OK)
   async ingestCategoryTree(@Body() dto: IngestCategoryTreeDto) {
-    this.logger.log(`Received category tree sync request with ${dto.categories?.length || 0} categories.`);
+    this.logger.log(
+      `Received category tree sync request with ${dto.categories?.length || 0} categories.`,
+    );
     await this.crawlerService.processCategoryTree(dto);
     return { success: true };
   }
