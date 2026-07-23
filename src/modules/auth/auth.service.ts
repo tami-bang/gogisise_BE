@@ -260,7 +260,31 @@ export class AuthService {
    * 1.7 이메일 마스킹 찾기
    */
   async findEmail(phone: string): Promise<string> {
-    const user = await this.prisma.user.findFirst({ where: { phone } });
+    // 💡 [한글 주석] 입력받은 휴대폰 번호의 하이픈 제거 정규화 처리
+    const cleanPhone = phone.replace(/[^0-9]/g, '');
+
+    // 💡 [한글 주석] 숫자만 11자리인 경우 '010-XXXX-XXXX' 포맷팅 변형 생성
+    let formattedPhone = cleanPhone;
+    if (cleanPhone.length === 11 && cleanPhone.startsWith('010')) {
+      formattedPhone = `${cleanPhone.slice(0, 3)}-${cleanPhone.slice(3, 7)}-${cleanPhone.slice(7)}`;
+    } else if (
+      cleanPhone.length === 10 &&
+      (cleanPhone.startsWith('011') ||
+        cleanPhone.startsWith('016') ||
+        cleanPhone.startsWith('017') ||
+        cleanPhone.startsWith('018') ||
+        cleanPhone.startsWith('019'))
+    ) {
+      formattedPhone = `${cleanPhone.slice(0, 3)}-${cleanPhone.slice(3, 6)}-${cleanPhone.slice(6)}`;
+    }
+
+    // 💡 [한글 주석] DB에서 숫자 전용 포맷 또는 하이픈 포맷 둘 중 하나에 매칭되는 유저를 OR 조회
+    const user = await this.prisma.user.findFirst({
+      where: {
+        OR: [{ phone: cleanPhone }, { phone: formattedPhone }],
+      },
+    });
+
     if (!user)
       throw new UnauthorizedException(
         '해당 휴대폰 번호로 가입된 계정이 없습니다.',

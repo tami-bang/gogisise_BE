@@ -200,7 +200,24 @@ let AuthService = AuthService_1 = class AuthService {
         }
     }
     async findEmail(phone) {
-        const user = await this.prisma.user.findFirst({ where: { phone } });
+        const cleanPhone = phone.replace(/[^0-9]/g, '');
+        let formattedPhone = cleanPhone;
+        if (cleanPhone.length === 11 && cleanPhone.startsWith('010')) {
+            formattedPhone = `${cleanPhone.slice(0, 3)}-${cleanPhone.slice(3, 7)}-${cleanPhone.slice(7)}`;
+        }
+        else if (cleanPhone.length === 10 &&
+            (cleanPhone.startsWith('011') ||
+                cleanPhone.startsWith('016') ||
+                cleanPhone.startsWith('017') ||
+                cleanPhone.startsWith('018') ||
+                cleanPhone.startsWith('019'))) {
+            formattedPhone = `${cleanPhone.slice(0, 3)}-${cleanPhone.slice(3, 6)}-${cleanPhone.slice(6)}`;
+        }
+        const user = await this.prisma.user.findFirst({
+            where: {
+                OR: [{ phone: cleanPhone }, { phone: formattedPhone }],
+            },
+        });
         if (!user)
             throw new common_1.UnauthorizedException('해당 휴대폰 번호로 가입된 계정이 없습니다.');
         const [local, domain] = user.email.split('@');
