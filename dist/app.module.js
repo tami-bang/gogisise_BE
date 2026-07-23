@@ -20,23 +20,25 @@ const prisma_module_1 = require("./core/prisma/prisma.module");
 const redis_module_1 = require("./core/redis/redis.module");
 const crawler_module_1 = require("./modules/crawler/crawler.module");
 const tasks_module_1 = require("./modules/tasks/tasks.module");
+const imports = [
+    schedule_1.ScheduleModule.forRoot(),
+    prisma_module_1.PrismaModule,
+    redis_module_1.RedisModule,
+    auth_module_1.AuthModule,
+    users_module_1.UsersModule,
+    market_module_1.MarketModule,
+    internal_module_1.InternalModule,
+    analytics_module_1.AnalyticsModule,
+];
+if (!process.env.VERCEL) {
+    imports.push(crawler_module_1.CrawlerModule, tasks_module_1.TasksModule);
+}
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
-        imports: [
-            schedule_1.ScheduleModule.forRoot(),
-            prisma_module_1.PrismaModule,
-            redis_module_1.RedisModule,
-            auth_module_1.AuthModule,
-            users_module_1.UsersModule,
-            market_module_1.MarketModule,
-            internal_module_1.InternalModule,
-            analytics_module_1.AnalyticsModule,
-            crawler_module_1.CrawlerModule,
-            tasks_module_1.TasksModule,
-        ],
+        imports,
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],
     })
