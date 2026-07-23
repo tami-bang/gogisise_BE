@@ -28,6 +28,9 @@ model RawRecord {
 
   // Retrying the exact same crawl payload must not create duplicate rows.
   @@unique([sourceName, collectedAt, rawProductName, pricePerKg, species, storageType], map: "uk_raw_records_ingestion")
+  // 💡 [한글 주석] 상세 집계 쿼리 속도 개선을 위한 복합 인덱스 및 카테고리 인덱스 추가
+  @@index([species, storageType, collectedAt], map: "idx_raw_records_query")
+  @@index([category], map: "idx_raw_records_category")
   @@map("Raw_Records")
 }
 
@@ -39,13 +42,13 @@ model MarketItem {
   detailUrl      String    @db.VarChar
   status         String    @default("ACTIVE") @db.VarChar
   price          Int       @db.Integer
-  species        String?   @db.VarChar
-  storageType    String?   @db.VarChar
+  species        String    @db.VarChar
+  storageType    String    @db.VarChar
   category       String    @db.VarChar
   displayName    String?   @db.VarChar
   grade          String?   @db.VarChar
   ageMonths      Int?      @db.Integer
-  weightKg       Decimal?  @db.Decimal(10, 3)
+  weightKg       Decimal   @db.Decimal(10, 3)
   salePrice      Int?      @db.Integer
   manufacturedAt DateTime? @db.Date
   expiresAt      DateTime? @db.Date
@@ -62,6 +65,8 @@ model MarketItem {
   @@index([species], map: "idx_market_items_species")
   @@index([storageType], map: "idx_market_items_storage_type")
   @@index([grade], map: "idx_market_items_grade")
+  // 💡 [한글 주석] 매물 카테고리 명으로 끝나는 항목(&& endsWith) 조회 속도 최적화를 위한 인덱스 추가
+  @@index([category], map: "idx_market_items_category")
   @@map("Market_Items")
 }
 

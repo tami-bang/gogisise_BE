@@ -1,12 +1,14 @@
+import { OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { MarketItemsDataResponseDto, PriceHistoryDataResponseDto } from './dto/market-response.dto';
-export declare class MarketService {
+export declare class MarketService implements OnModuleInit {
     private readonly prisma;
     private readonly logger;
     private readonly categoryCalculationsCache;
     private readonly itemCalculationsCache;
     private readonly CALCULATIONS_CACHE_TTL;
     constructor(prisma: PrismaService);
+    onModuleInit(): Promise<void>;
     getAllMarketItems(): Promise<MarketItemsDataResponseDto>;
     getCategories(options: {
         parentNo?: string;

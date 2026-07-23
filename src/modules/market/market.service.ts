@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import {
   MarketItemsDataResponseDto,
@@ -6,7 +6,7 @@ import {
 } from './dto/market-response.dto';
 
 @Injectable()
-export class MarketService {
+export class MarketService implements OnModuleInit {
   private readonly logger = new Logger(MarketService.name);
 
   // 💡 [한글 주석] 상세 계산 API의 응답 지연(10초 이상)을 해결하기 위한 30초 로컬 메모리 캐시 맵
@@ -15,6 +15,32 @@ export class MarketService {
   private readonly CALCULATIONS_CACHE_TTL = 30 * 1000; // 30초 캐시
 
   constructor(private readonly prisma: PrismaService) {}
+
+  // 💡 [한글 주석] 서버 구동 시 서버리스 콜드 스타트 지연 극복을 위해 주요 5대 카테고리 가격 계산 캐시 사전 예열(Cache Warm-up) 수행
+  async onModuleInit() {
+    this.logger.log('Starting calculations cache warm-up...');
+    const targetCategories = [
+      '국내산 한우 > 국내산 한우 암소 > 냉장 > 안심',
+      '국내산 한우 > 국내산 한우 암소 > 냉장 > 등심',
+      '국내산 한우 > 국내산 한우 암소 > 냉장 > 채끝',
+      '국내산 한우 > 국내산 한우 암소 > 냉장 > 갈비',
+      '국내산 한우 > 국내산 한우 암소 > 냉장 > 양지',
+      '국내산 돈육 > 냉장 > 삼겹살',
+      '국내산 돈육 > 냉장 > 삼겹',
+      '국내산 돈육 > 냉장 > 목심',
+      '국내산 돈육 > 냉장 > 앞다리',
+    ];
+
+    targetCategories.forEach((categoryPath) => {
+      this.getCategoryCalculations(categoryPath)
+        .then(() => {
+          this.logger.log(`Cache warmed up for: ${categoryPath}`);
+        })
+        .catch((err) => {
+          this.logger.warn(`Failed to warm up cache for: ${categoryPath}`, err);
+        });
+    });
+  }
 
   /**
    * 전체 시세 리스트 (Zero-Delay 서빙용 Flat Array) 반환

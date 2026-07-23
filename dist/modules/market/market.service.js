@@ -22,6 +22,29 @@ let MarketService = MarketService_1 = class MarketService {
     constructor(prisma) {
         this.prisma = prisma;
     }
+    async onModuleInit() {
+        this.logger.log('Starting calculations cache warm-up...');
+        const targetCategories = [
+            '국내산 한우 > 국내산 한우 암소 > 냉장 > 안심',
+            '국내산 한우 > 국내산 한우 암소 > 냉장 > 등심',
+            '국내산 한우 > 국내산 한우 암소 > 냉장 > 채끝',
+            '국내산 한우 > 국내산 한우 암소 > 냉장 > 갈비',
+            '국내산 한우 > 국내산 한우 암소 > 냉장 > 양지',
+            '국내산 돈육 > 냉장 > 삼겹살',
+            '국내산 돈육 > 냉장 > 삼겹',
+            '국내산 돈육 > 냉장 > 목심',
+            '국내산 돈육 > 냉장 > 앞다리',
+        ];
+        targetCategories.forEach((categoryPath) => {
+            this.getCategoryCalculations(categoryPath)
+                .then(() => {
+                this.logger.log(`Cache warmed up for: ${categoryPath}`);
+            })
+                .catch((err) => {
+                this.logger.warn(`Failed to warm up cache for: ${categoryPath}`, err);
+            });
+        });
+    }
     async getAllMarketItems() {
         const items = await this.prisma.marketItem.findMany({
             where: { status: 'ACTIVE' },
