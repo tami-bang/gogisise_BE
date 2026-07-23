@@ -134,7 +134,7 @@ export class MarketService {
    * 카테고리 경로 기준으로 산출 세부 내역 반환
    */
   async getCategoryCalculations(categoryPath: string) {
-    // 💡 [한글 주석] 30초 이내에 조회된 동일 카테고리 시세 계산 결과가 메모리 캐시에 존재할 경우 즉시 반환 (API 성능 지연 해결)
+    // 💡 [한글 주석] 3분 이내에 조회된 동일 카테고리 시세 계산 결과가 메모리 캐시에 존재할 경우 즉시 반환 (API 성능 지연 해결)
     const cached = this.categoryCalculationsCache.get(categoryPath);
     if (cached && Date.now() - cached.fetchedAt < this.CALCULATIONS_CACHE_TTL) {
       return cached.data;
@@ -150,15 +150,6 @@ export class MarketService {
     const isFrozen = categoryPath.includes('냉동');
     const storageType = isChilled ? 'CHILLED' : isFrozen ? 'FROZEN' : undefined;
 
-    const rawRecords = await this.prisma.rawRecord.findMany({
-      where: {
-        species,
-        storageType,
-      },
-      orderBy: { collectedAt: 'desc' },
-      take: 200, // 여유 있게 수집
-    });
-
     // 운영 중 사용된 `>`, `,`, `/` 경로를 모두 허용하되 실제 조회 키는 마지막
     // 부위명으로 통일합니다. 공급처/브랜드는 매물 속성이지 부위 조회 조건이 아닙니다.
     const categorySeparator = categoryPath.includes('>')
@@ -172,9 +163,48 @@ export class MarketService {
       .filter(Boolean);
     const catName = categoryParts[categoryParts.length - 1] || '';
 
-    const strictFilteredRecords = rawRecords.filter(
-      (record) => record.category.trim() === catName,
-    );
+    // 💡 [한글 주석] DB 레벨에서 직접 평균, 최저가, 최고가, 개수를 집계하여 Node.js 단의 수만 건 메모리 순회 연산을 제거합니다.
+    const aggregateResult = await this.prisma.rawRecord.aggregate({
+      where: {
+        species,
+        storageType,
+        category: catName,
+      },
+      _avg: {
+        pricePerKg: true,
+      },
+      _max: {
+        pricePerKg: true,
+      },
+      _min: {
+        pricePerKg: true,
+      },
+      _count: {
+        rawRecordId: true,
+      },
+    });
+
+    // 💡 [한글 주석] 목록 상세 표기용 RawRecord 조회를 'take: 20' 과 필수 컬럼 select 조건으로 대폭 단순화
+    const strictFilteredRecords = await this.prisma.rawRecord.findMany({
+      where: {
+        species,
+        storageType,
+        category: catName,
+      },
+      orderBy: { collectedAt: 'desc' },
+      take: 20,
+      select: {
+        rawRecordId: true,
+        rawProductName: true,
+        pricePerKg: true,
+        ageMonths: true,
+        collectedAt: true,
+        qualityGrade: true,
+        brand: true,
+        gender: true,
+        category: true,
+      },
+    });
 
     // 부위명 매핑 고도화 (Name Mapping)
     const mappedSourceRecords = strictFilteredRecords.map((r) => {
@@ -213,7 +243,6 @@ export class MarketService {
       };
     });
 
-    // sourceItems: 원본 MarketItem 리스트 (금천미트 바로가기용)
     // 💡 [한글 주석] B-Tree 인덱스(idx_market_items_category)를 온전히 활용하기 위해
     // endsWith 조건 대신 CategoryTree 테이블에서 해당 부위명으로 끝나는 카테고리 전체 경로 리스트를 먼저 조회합니다.
     const matchedCategories = await this.prisma.categoryTree.findMany({
@@ -282,34 +311,35 @@ export class MarketService {
       historyByItem.set(row.itemId, itemHistory);
     }
 
-    const dailyPrices = new Map<string, number[]>();
-    for (const row of historyRows) {
-      if (row.price === null) continue;
-      const marketDate = row.marketDate.toISOString().split('T')[0];
-      const pricesForDate = dailyPrices.get(marketDate) ?? [];
-      pricesForDate.push(row.price);
-      dailyPrices.set(marketDate, pricesForDate);
-    }
-    const priceHistory = Array.from(dailyPrices.entries())
-      .map(([marketDate, dailyValues]) => ({
-        marketDate,
-        price: Math.round(
-          dailyValues.reduce((sum, price) => sum + price, 0) /
-            dailyValues.length,
-        ),
-      }))
-      .sort((a, b) => a.marketDate.localeCompare(b.marketDate));
+    // 💡 [한글 주석] 차트용 7일 평균 가격 연산도 DB 레벨 groupBy 기능을 활용하여 Node.js 단의 불필요한 직렬화 연산 제거
+    const chartHistory = sourceItemIds.length > 0
+      ? await this.prisma.marketItemPrice.groupBy({
+          by: ['marketDate'],
+          where: {
+            itemId: { in: sourceItemIds },
+            marketDate: { in: recentMarketDates.map((row) => row.marketDate) },
+            price: { not: null },
+          },
+          _avg: {
+            price: true,
+          },
+          orderBy: {
+            marketDate: 'asc',
+          },
+        })
+      : [];
+
+    const priceHistory = chartHistory.map((row) => ({
+      marketDate: row.marketDate.toISOString().split('T')[0],
+      price: Math.round(row._avg.price ?? 0),
+    }));
 
     // 카테고리는 수집 단계에서 이미 정규화되어 있다. 상품명에 부위명이 반복되지
     // 않는 정상 상품까지 제거하던 키워드 기반 2차 필터는 적용하지 않는다.
     const filteredSourceItems = sourceItems;
 
     // 시세 가격 지표 연산
-    const prices = strictFilteredRecords.map((r) => r.pricePerKg);
-    const averagePrice =
-      prices.length > 0
-        ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
-        : 0;
+    const averagePrice = Math.round(aggregateResult._avg.pricePerKg ?? 0);
 
     const fallbackPrice =
       filteredSourceItems.length > 0
@@ -333,19 +363,8 @@ export class MarketService {
           ? 'DOWN'
           : 'UNCHANGED';
 
-    const highestPrice =
-      prices.length > 0
-        ? Math.max(...prices)
-        : filteredSourceItems.length > 0
-          ? Math.max(...filteredSourceItems.map((si) => si.price))
-          : 0;
-
-    const lowestPrice =
-      prices.length > 0
-        ? Math.min(...prices)
-        : filteredSourceItems.length > 0
-          ? Math.min(...filteredSourceItems.map((si) => si.price))
-          : 0;
+    const highestPrice = aggregateResult._max.pricePerKg || (filteredSourceItems.length > 0 ? Math.max(...filteredSourceItems.map((si) => si.price)) : 0);
+    const lowestPrice = aggregateResult._min.pricePerKg || (filteredSourceItems.length > 0 ? Math.min(...filteredSourceItems.map((si) => si.price)) : 0);
 
     // 대표 카테고리 정보 추출
     const displayName = catName;
@@ -366,7 +385,7 @@ export class MarketService {
       trendStatus: categoryTrendStatus,
       highestPrice,
       lowestPrice,
-      participantCount: strictFilteredRecords.length,
+      participantCount: aggregateResult._count.rawRecordId,
       lastCollectedAt,
       priceHistory,
       sourceRecords: mappedSourceRecords,
@@ -406,7 +425,7 @@ export class MarketService {
       }),
     };
 
-    // 💡 [한글 주석] 결과를 30초 동안 로컬 메모리 캐시에 보관
+    // 💡 [한글 주석] 결과를 3분 동안 로컬 메모리 캐시에 보관
     this.categoryCalculationsCache.set(categoryPath, {
       data: result,
       fetchedAt: Date.now(),
@@ -419,7 +438,7 @@ export class MarketService {
    * 특정 품목의 시세 산출 세부 내역 (원본 매물) 반환
    */
   async getItemCalculations(itemId: string) {
-    // 💡 [한글 주석] 30초 이내에 동일한 품목 ID로 계산된 시세 결과가 캐시에 존재하면 즉시 반환 (속도 최적화)
+    // 💡 [한글 주석] 3분 이내에 동일한 품목 ID로 계산된 시세 결과가 캐시에 존재하면 즉시 반환 (속도 최적화)
     const cached = this.itemCalculationsCache.get(itemId);
     if (cached && Date.now() - cached.fetchedAt < this.CALCULATIONS_CACHE_TTL) {
       return cached.data;
@@ -462,43 +481,52 @@ export class MarketService {
         ? 'FROZEN'
         : item.storageType;
 
-    const rawRecords = await this.prisma.rawRecord.findMany({
+    const catParts = item.category.split(' > ');
+    const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
+
+    // 💡 [한글 주석] DB 레벨에서 직접 평균, 최저가, 최고가, 개수를 집계하여 Node.js 단의 메모리 연산 병목 제거
+    const aggregateResult = await this.prisma.rawRecord.aggregate({
       where: {
         species: item.species || parsedSpecies || undefined,
         storageType: item.storageType || parsedStorageType || undefined,
+        category: catName,
+        ...(item.grade ? { qualityGrade: item.grade } : {}),
       },
-      orderBy: { collectedAt: 'desc' },
-      take: 100, // 여유 있게 가져와서 JS 단에서 카테고리 경로를 엄격히 필터링합니다.
+      _avg: {
+        pricePerKg: true,
+      },
+      _max: {
+        pricePerKg: true,
+      },
+      _min: {
+        pricePerKg: true,
+      },
+      _count: {
+        rawRecordId: true,
+      },
     });
 
-    const strictFilteredRecords = rawRecords.filter((r) => {
-      const speciesPrefix =
-        r.species === 'BEEF' ? '국내산 한우' : '국내산 돈육';
-      const storagePrefix = r.storageType === 'CHILLED' ? '냉장' : '냉동';
-
-      // 카테고리 부위명 표준 매핑 규칙
-      let rawCat = r.category;
-      if (r.species === 'BEEF') {
-        if (rawCat === '우둔살') rawCat = '우둔';
-        if (rawCat === '앞다리') rawCat = '앞다리살';
-        if (rawCat === '설깃') rawCat = '설도';
-        if (rawCat === '양지머리' || rawCat.includes('양지')) rawCat = '양지';
-        if (rawCat === '갈비살') rawCat = '갈비';
-      } else if (r.species === 'PORK') {
-        if (rawCat === '앞다리살') rawCat = '앞다리';
-        if (rawCat === '뒷다리살') rawCat = '뒷다리';
-        if (rawCat === '삼겹살') rawCat = '삼겹';
-        if (rawCat === '갈비살') rawCat = '갈비';
-      }
-
-      const reconstructedPath = `${speciesPrefix} > ${storagePrefix} > ${rawCat}`;
-      const isPathMatch = reconstructedPath === item.category;
-      if (!isPathMatch) return false;
-
-      if (item.grade && r.qualityGrade) {
-        return r.qualityGrade === item.grade;
-      }
-      return true;
+    // 💡 [한글 주석] 상세 목록용 RawRecord 조회를 필수 컬럼 select와 'take: 20'으로 대폭 단순화
+    const strictFilteredRecords = await this.prisma.rawRecord.findMany({
+      where: {
+        species: item.species || parsedSpecies || undefined,
+        storageType: item.storageType || parsedStorageType || undefined,
+        category: catName,
+        ...(item.grade ? { qualityGrade: item.grade } : {}),
+      },
+      orderBy: { collectedAt: 'desc' },
+      take: 20,
+      select: {
+        rawRecordId: true,
+        rawProductName: true,
+        pricePerKg: true,
+        ageMonths: true,
+        collectedAt: true,
+        qualityGrade: true,
+        brand: true,
+        gender: true,
+        category: true,
+      },
     });
 
     // 2. 부위명 매핑 고도화 (Name Mapping)
@@ -615,7 +643,7 @@ export class MarketService {
       trendStatus: latestPrice?.trendStatus ?? 'UNCHANGED',
       highestPrice: latestPrice?.highestPrice ?? currentPrice,
       lowestPrice: latestPrice?.lowestPrice ?? currentPrice,
-      participantCount: strictFilteredRecords.length, // 실 참여 개수 반영
+      participantCount: aggregateResult._count.rawRecordId, // 실 참여 개수 반영
       sourceRecords: mappedSourceRecords,
       sourceItems: filteredSourceItems.map((si) => ({
         itemId: si.itemId,
@@ -632,7 +660,7 @@ export class MarketService {
       })),
     };
 
-    // 💡 [한글 주석] 결과를 30초 동안 메모리 캐시에 보관
+    // 💡 [한글 주석] 결과를 3분 동안 메모리 캐시에 보관
     this.itemCalculationsCache.set(itemId, {
       data: result,
       fetchedAt: Date.now(),

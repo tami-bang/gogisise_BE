@@ -123,14 +123,6 @@ let MarketService = MarketService_1 = class MarketService {
         const isChilled = categoryPath.includes('냉장');
         const isFrozen = categoryPath.includes('냉동');
         const storageType = isChilled ? 'CHILLED' : isFrozen ? 'FROZEN' : undefined;
-        const rawRecords = await this.prisma.rawRecord.findMany({
-            where: {
-                species,
-                storageType,
-            },
-            orderBy: { collectedAt: 'desc' },
-            take: 200,
-        });
         const categorySeparator = categoryPath.includes('>')
             ? /\s*>\s*/
             : categoryPath.includes('/')
@@ -141,7 +133,45 @@ let MarketService = MarketService_1 = class MarketService {
             .map((part) => part.trim())
             .filter(Boolean);
         const catName = categoryParts[categoryParts.length - 1] || '';
-        const strictFilteredRecords = rawRecords.filter((record) => record.category.trim() === catName);
+        const aggregateResult = await this.prisma.rawRecord.aggregate({
+            where: {
+                species,
+                storageType,
+                category: catName,
+            },
+            _avg: {
+                pricePerKg: true,
+            },
+            _max: {
+                pricePerKg: true,
+            },
+            _min: {
+                pricePerKg: true,
+            },
+            _count: {
+                rawRecordId: true,
+            },
+        });
+        const strictFilteredRecords = await this.prisma.rawRecord.findMany({
+            where: {
+                species,
+                storageType,
+                category: catName,
+            },
+            orderBy: { collectedAt: 'desc' },
+            take: 20,
+            select: {
+                rawRecordId: true,
+                rawProductName: true,
+                pricePerKg: true,
+                ageMonths: true,
+                collectedAt: true,
+                qualityGrade: true,
+                brand: true,
+                gender: true,
+                category: true,
+            },
+        });
         const mappedSourceRecords = strictFilteredRecords.map((r) => {
             const rawName = r.rawProductName;
             const brand = r.brand ? `[${r.brand}]` : '';
@@ -230,27 +260,28 @@ let MarketService = MarketService_1 = class MarketService {
             itemHistory.push({ marketDate: row.marketDate, price: row.price });
             historyByItem.set(row.itemId, itemHistory);
         }
-        const dailyPrices = new Map();
-        for (const row of historyRows) {
-            if (row.price === null)
-                continue;
-            const marketDate = row.marketDate.toISOString().split('T')[0];
-            const pricesForDate = dailyPrices.get(marketDate) ?? [];
-            pricesForDate.push(row.price);
-            dailyPrices.set(marketDate, pricesForDate);
-        }
-        const priceHistory = Array.from(dailyPrices.entries())
-            .map(([marketDate, dailyValues]) => ({
-            marketDate,
-            price: Math.round(dailyValues.reduce((sum, price) => sum + price, 0) /
-                dailyValues.length),
-        }))
-            .sort((a, b) => a.marketDate.localeCompare(b.marketDate));
+        const chartHistory = sourceItemIds.length > 0
+            ? await this.prisma.marketItemPrice.groupBy({
+                by: ['marketDate'],
+                where: {
+                    itemId: { in: sourceItemIds },
+                    marketDate: { in: recentMarketDates.map((row) => row.marketDate) },
+                    price: { not: null },
+                },
+                _avg: {
+                    price: true,
+                },
+                orderBy: {
+                    marketDate: 'asc',
+                },
+            })
+            : [];
+        const priceHistory = chartHistory.map((row) => ({
+            marketDate: row.marketDate.toISOString().split('T')[0],
+            price: Math.round(row._avg.price ?? 0),
+        }));
         const filteredSourceItems = sourceItems;
-        const prices = strictFilteredRecords.map((r) => r.pricePerKg);
-        const averagePrice = prices.length > 0
-            ? Math.round(prices.reduce((a, b) => a + b, 0) / prices.length)
-            : 0;
+        const averagePrice = Math.round(aggregateResult._avg.pricePerKg ?? 0);
         const fallbackPrice = filteredSourceItems.length > 0
             ? Math.round(filteredSourceItems.reduce((a, b) => a + b.price, 0) /
                 filteredSourceItems.length)
@@ -266,16 +297,8 @@ let MarketService = MarketService_1 = class MarketService {
             : categoryChangeAmount < 0
                 ? 'DOWN'
                 : 'UNCHANGED';
-        const highestPrice = prices.length > 0
-            ? Math.max(...prices)
-            : filteredSourceItems.length > 0
-                ? Math.max(...filteredSourceItems.map((si) => si.price))
-                : 0;
-        const lowestPrice = prices.length > 0
-            ? Math.min(...prices)
-            : filteredSourceItems.length > 0
-                ? Math.min(...filteredSourceItems.map((si) => si.price))
-                : 0;
+        const highestPrice = aggregateResult._max.pricePerKg || (filteredSourceItems.length > 0 ? Math.max(...filteredSourceItems.map((si) => si.price)) : 0);
+        const lowestPrice = aggregateResult._min.pricePerKg || (filteredSourceItems.length > 0 ? Math.min(...filteredSourceItems.map((si) => si.price)) : 0);
         const displayName = catName;
         const collectionTimestamps = [
             ...strictFilteredRecords.map((record) => record.collectedAt.getTime()),
@@ -293,7 +316,7 @@ let MarketService = MarketService_1 = class MarketService {
             trendStatus: categoryTrendStatus,
             highestPrice,
             lowestPrice,
-            participantCount: strictFilteredRecords.length,
+            participantCount: aggregateResult._count.rawRecordId,
             lastCollectedAt,
             priceHistory,
             sourceRecords: mappedSourceRecords,
@@ -367,48 +390,48 @@ let MarketService = MarketService_1 = class MarketService {
             : isFrozen
                 ? 'FROZEN'
                 : item.storageType;
-        const rawRecords = await this.prisma.rawRecord.findMany({
+        const catParts = item.category.split(' > ');
+        const catName = catParts[catParts.length - 1];
+        const aggregateResult = await this.prisma.rawRecord.aggregate({
             where: {
                 species: item.species || parsedSpecies || undefined,
                 storageType: item.storageType || parsedStorageType || undefined,
+                category: catName,
+                ...(item.grade ? { qualityGrade: item.grade } : {}),
+            },
+            _avg: {
+                pricePerKg: true,
+            },
+            _max: {
+                pricePerKg: true,
+            },
+            _min: {
+                pricePerKg: true,
+            },
+            _count: {
+                rawRecordId: true,
+            },
+        });
+        const strictFilteredRecords = await this.prisma.rawRecord.findMany({
+            where: {
+                species: item.species || parsedSpecies || undefined,
+                storageType: item.storageType || parsedStorageType || undefined,
+                category: catName,
+                ...(item.grade ? { qualityGrade: item.grade } : {}),
             },
             orderBy: { collectedAt: 'desc' },
-            take: 100,
-        });
-        const strictFilteredRecords = rawRecords.filter((r) => {
-            const speciesPrefix = r.species === 'BEEF' ? '국내산 한우' : '국내산 돈육';
-            const storagePrefix = r.storageType === 'CHILLED' ? '냉장' : '냉동';
-            let rawCat = r.category;
-            if (r.species === 'BEEF') {
-                if (rawCat === '우둔살')
-                    rawCat = '우둔';
-                if (rawCat === '앞다리')
-                    rawCat = '앞다리살';
-                if (rawCat === '설깃')
-                    rawCat = '설도';
-                if (rawCat === '양지머리' || rawCat.includes('양지'))
-                    rawCat = '양지';
-                if (rawCat === '갈비살')
-                    rawCat = '갈비';
-            }
-            else if (r.species === 'PORK') {
-                if (rawCat === '앞다리살')
-                    rawCat = '앞다리';
-                if (rawCat === '뒷다리살')
-                    rawCat = '뒷다리';
-                if (rawCat === '삼겹살')
-                    rawCat = '삼겹';
-                if (rawCat === '갈비살')
-                    rawCat = '갈비';
-            }
-            const reconstructedPath = `${speciesPrefix} > ${storagePrefix} > ${rawCat}`;
-            const isPathMatch = reconstructedPath === item.category;
-            if (!isPathMatch)
-                return false;
-            if (item.grade && r.qualityGrade) {
-                return r.qualityGrade === item.grade;
-            }
-            return true;
+            take: 20,
+            select: {
+                rawRecordId: true,
+                rawProductName: true,
+                pricePerKg: true,
+                ageMonths: true,
+                collectedAt: true,
+                qualityGrade: true,
+                brand: true,
+                gender: true,
+                category: true,
+            },
         });
         const mappedSourceRecords = strictFilteredRecords.map((r) => {
             const rawName = r.rawProductName;
@@ -510,7 +533,7 @@ let MarketService = MarketService_1 = class MarketService {
             trendStatus: latestPrice?.trendStatus ?? 'UNCHANGED',
             highestPrice: latestPrice?.highestPrice ?? currentPrice,
             lowestPrice: latestPrice?.lowestPrice ?? currentPrice,
-            participantCount: strictFilteredRecords.length,
+            participantCount: aggregateResult._count.rawRecordId,
             sourceRecords: mappedSourceRecords,
             sourceItems: filteredSourceItems.map((si) => ({
                 itemId: si.itemId,
