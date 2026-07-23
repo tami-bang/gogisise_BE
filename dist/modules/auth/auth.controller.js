@@ -11,14 +11,16 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
+var AuthController_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
 const auth_service_1 = require("./auth.service");
 const auth_dto_1 = require("./dto/auth.dto");
 const jwt_auth_guard_1 = require("../../core/guards/jwt-auth.guard");
-let AuthController = class AuthController {
+let AuthController = AuthController_1 = class AuthController {
     authService;
+    logger = new common_1.Logger(AuthController_1.name);
     constructor(authService) {
         this.authService = authService;
     }
@@ -43,19 +45,29 @@ let AuthController = class AuthController {
         return { success: true, data, meta: this.buildMeta('signup') };
     }
     async login(dto, res) {
-        const result = await this.authService.login(dto);
-        if (result.refreshToken) {
-            res.cookie('refreshToken', result.refreshToken, this.getRefreshCookieOptions());
+        try {
+            const result = await this.authService.login(dto);
+            if (result.refreshToken) {
+                res.cookie('refreshToken', result.refreshToken, this.getRefreshCookieOptions());
+            }
+            return {
+                success: true,
+                data: {
+                    accessToken: result.accessToken,
+                    expiresIn: result.expiresIn,
+                    user: result.user,
+                },
+                meta: this.buildMeta('login'),
+            };
         }
-        return {
-            success: true,
-            data: {
-                accessToken: result.accessToken,
-                expiresIn: result.expiresIn,
-                user: result.user,
-            },
-            meta: this.buildMeta('login'),
-        };
+        catch (err) {
+            this.logger.error('Login failed with error:', err);
+            throw new common_1.InternalServerErrorException({
+                message: 'Login failed custom diagnostic',
+                error: err.message || err.toString(),
+                stack: err.stack,
+            });
+        }
     }
     async kakaoLogin(dto, res) {
         const result = await this.authService.kakaoLogin(dto);
@@ -167,7 +179,7 @@ __decorate([
     __metadata("design:paramtypes", [auth_dto_1.SendResetLinkDto]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "sendResetLink", null);
-exports.AuthController = AuthController = __decorate([
+exports.AuthController = AuthController = AuthController_1 = __decorate([
     (0, common_1.Controller)('api/v1/auth'),
     __metadata("design:paramtypes", [auth_service_1.AuthService])
 ], AuthController);

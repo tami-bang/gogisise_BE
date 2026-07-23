@@ -8,6 +8,8 @@ import {
   HttpStatus,
   UseGuards,
   UnauthorizedException,
+  InternalServerErrorException,
+  Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express'; // isolatedModules 대응: type-only import
 import { AuthService } from './auth.service';
@@ -22,6 +24,8 @@ import { JwtAuthGuard } from '../../core/guards/jwt-auth.guard';
 
 @Controller('api/v1/auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(private readonly authService: AuthService) {}
 
   // 공통 메타 정보 생성 헬퍼
@@ -57,26 +61,35 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.authService.login(dto);
+    try {
+      const result = await this.authService.login(dto);
 
-    // autoLogin 시 리프레시 토큰을 HttpOnly 쿠키로 주입
-    if (result.refreshToken) {
-      res.cookie(
-        'refreshToken',
-        result.refreshToken,
-        this.getRefreshCookieOptions(),
-      );
+      // autoLogin 시 리프레시 토큰을 HttpOnly 쿠키로 주입
+      if (result.refreshToken) {
+        res.cookie(
+          'refreshToken',
+          result.refreshToken,
+          this.getRefreshCookieOptions(),
+        );
+      }
+
+      return {
+        success: true,
+        data: {
+          accessToken: result.accessToken,
+          expiresIn: result.expiresIn,
+          user: result.user,
+        },
+        meta: this.buildMeta('login'),
+      };
+    } catch (err: any) {
+      this.logger.error('Login failed with error:', err);
+      throw new InternalServerErrorException({
+        message: 'Login failed custom diagnostic',
+        error: err.message || err.toString(),
+        stack: err.stack,
+      });
     }
-
-    return {
-      success: true,
-      data: {
-        accessToken: result.accessToken,
-        expiresIn: result.expiresIn,
-        user: result.user,
-      },
-      meta: this.buildMeta('login'),
-    };
   }
 
   @Post('kakao')

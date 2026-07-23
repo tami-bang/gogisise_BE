@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { SignupDto, LoginDto, KakaoLoginDto, FindEmailDto, SendResetLinkDto } from './dto/auth.dto';
 export declare class AuthController {
     private readonly authService;
+    private readonly logger;
     constructor(authService: AuthService);
     private buildMeta;
     private getRefreshCookieOptions;
