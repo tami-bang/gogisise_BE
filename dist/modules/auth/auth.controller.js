@@ -63,8 +63,8 @@ let AuthController = AuthController_1 = class AuthController {
         catch (err) {
             this.logger.error('Login failed with error:', err);
             throw new common_1.InternalServerErrorException({
-                message: 'Login failed custom diagnostic',
-                error: err.message || err.toString(),
+                message: `로그인 처리 중 에러가 발생했습니다: ${err.message || err.toString()}`,
+                error: err.name || 'LoginError',
                 stack: err.stack,
             });
         }
