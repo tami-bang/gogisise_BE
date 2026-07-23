@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import {
   MarketItemsDataResponseDto,
@@ -6,7 +6,7 @@ import {
 } from './dto/market-response.dto';
 
 @Injectable()
-export class MarketService implements OnModuleInit {
+export class MarketService {
   private readonly logger = new Logger(MarketService.name);
 
   // 💡 [한글 주석] 상세 계산 API의 응답 지연(10초 이상)을 해결하기 위한 30초 로컬 메모리 캐시 맵
@@ -15,32 +15,6 @@ export class MarketService implements OnModuleInit {
   private readonly CALCULATIONS_CACHE_TTL = 30 * 1000; // 30초 캐시
 
   constructor(private readonly prisma: PrismaService) {}
-
-  // 💡 [한글 주석] 서버 구동 시 서버리스 콜드 스타트 지연 극복을 위해 주요 5대 카테고리 가격 계산 캐시 사전 예열(Cache Warm-up) 수행
-  async onModuleInit() {
-    this.logger.log('Starting calculations cache warm-up...');
-    const targetCategories = [
-      '국내산 한우 > 국내산 한우 암소 > 냉장 > 안심',
-      '국내산 한우 > 국내산 한우 암소 > 냉장 > 등심',
-      '국내산 한우 > 국내산 한우 암소 > 냉장 > 채끝',
-      '국내산 한우 > 국내산 한우 암소 > 냉장 > 갈비',
-      '국내산 한우 > 국내산 한우 암소 > 냉장 > 양지',
-      '국내산 돈육 > 냉장 > 삼겹살',
-      '국내산 돈육 > 냉장 > 삼겹',
-      '국내산 돈육 > 냉장 > 목심',
-      '국내산 돈육 > 냉장 > 앞다리',
-    ];
-
-    targetCategories.forEach((categoryPath) => {
-      this.getCategoryCalculations(categoryPath)
-        .then(() => {
-          this.logger.log(`Cache warmed up for: ${categoryPath}`);
-        })
-        .catch((err) => {
-          this.logger.warn(`Failed to warm up cache for: ${categoryPath}`, err);
-        });
-    });
-  }
 
   /**
    * 전체 시세 리스트 (Zero-Delay 서빙용 Flat Array) 반환
@@ -240,14 +214,23 @@ export class MarketService implements OnModuleInit {
     });
 
     // sourceItems: 원본 MarketItem 리스트 (금천미트 바로가기용)
-    // 정규화된 축종·보관상태와 카테고리 마지막 부위명으로 조회한다. 브랜드 노드를
-    // 조건으로 사용하면 같은 부위의 다른 공급처 매물이 누락되므로 의도적으로 제외한다.
+    // 💡 [한글 주석] B-Tree 인덱스(idx_market_items_category)를 온전히 활용하기 위해
+    // endsWith 조건 대신 CategoryTree 테이블에서 해당 부위명으로 끝나는 카테고리 전체 경로 리스트를 먼저 조회합니다.
+    const matchedCategories = await this.prisma.categoryTree.findMany({
+      where: {
+        path: { endsWith: catName },
+      },
+      select: { path: true },
+    });
+    const categoryPaths = matchedCategories.map((c) => c.path);
+
+    // 💡 [한글 주석] category: { in: categoryPaths } 를 사용해 인덱스 레인지 스캔이 유도되도록 쿼리 튜닝 완료
     const sourceItems = await this.prisma.marketItem.findMany({
       where: {
         status: 'ACTIVE',
         species,
         storageType,
-        category: { endsWith: catName },
+        category: { in: categoryPaths },
       },
       select: {
         itemId: true,
