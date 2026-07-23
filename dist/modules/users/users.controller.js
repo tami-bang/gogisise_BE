@@ -16,6 +16,7 @@ exports.UsersController = void 0;
 const common_1 = require("@nestjs/common");
 const users_service_1 = require("./users.service");
 const jwt_auth_guard_1 = require("../../core/guards/jwt-auth.guard");
+const users_dto_1 = require("./dto/users.dto");
 let UsersController = class UsersController {
     usersService;
     constructor(usersService) {
@@ -48,6 +49,19 @@ let UsersController = class UsersController {
     async removeFavorite(req, itemId) {
         const userId = req.user.userId;
         await this.usersService.removeFavorite(userId, itemId);
+    }
+    async updateProfile(req, dto) {
+        const userId = req.user.userId;
+        const data = await this.usersService.updateProfile(userId, dto);
+        return { success: true, data, meta: this.buildMeta('update-profile') };
+    }
+    async updatePassword(req, dto) {
+        const userId = req.user.userId;
+        await this.usersService.updatePassword(userId, dto);
+    }
+    async deleteAccount(req) {
+        const userId = req.user.userId;
+        await this.usersService.deleteAccount(userId);
     }
 };
 exports.UsersController = UsersController;
@@ -83,6 +97,31 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], UsersController.prototype, "removeFavorite", null);
+__decorate([
+    (0, common_1.Patch)('me/profile'),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, users_dto_1.UpdateProfileDto]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "updateProfile", null);
+__decorate([
+    (0, common_1.Patch)('me/password'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    __param(0, (0, common_1.Req)()),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, users_dto_1.UpdatePasswordDto]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "updatePassword", null);
+__decorate([
+    (0, common_1.Delete)('me'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    __param(0, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "deleteAccount", null);
 exports.UsersController = UsersController = __decorate([
     (0, common_1.Controller)('api/v1/users'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),

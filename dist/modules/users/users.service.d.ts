@@ -1,5 +1,6 @@
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { MarketService } from '../market/market.service';
+import { UpdateProfileDto, UpdatePasswordDto } from './dto/users.dto';
 export declare class UsersService {
     private readonly prisma;
     private readonly marketService;
@@ -29,4 +30,12 @@ export declare class UsersService {
     }[]>;
     addFavorite(userId: string, itemId: string): Promise<void>;
     removeFavorite(userId: string, itemId: string): Promise<void>;
+    updateProfile(userId: string, dto: UpdateProfileDto): Promise<{
+        userId: string;
+        email: string;
+        nickname: string;
+        phone: string;
+    }>;
+    updatePassword(userId: string, dto: UpdatePasswordDto): Promise<void>;
+    deleteAccount(userId: string): Promise<void>;
 }

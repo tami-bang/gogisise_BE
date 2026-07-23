@@ -1,5 +1,6 @@
 import type { Request } from 'express';
 import { UsersService } from './users.service';
+import { UpdateProfileDto, UpdatePasswordDto } from './dto/users.dto';
 export declare class UsersController {
     private readonly usersService;
     constructor(usersService: UsersService);
@@ -45,4 +46,19 @@ export declare class UsersController {
     }>;
     addFavorite(req: Request, itemId: string): Promise<void>;
     removeFavorite(req: Request, itemId: string): Promise<void>;
+    updateProfile(req: Request, dto: UpdateProfileDto): Promise<{
+        success: boolean;
+        data: {
+            userId: string;
+            email: string;
+            nickname: string;
+            phone: string;
+        };
+        meta: {
+            requestId: string;
+            servedAt: string;
+        };
+    }>;
+    updatePassword(req: Request, dto: UpdatePasswordDto): Promise<void>;
+    deleteAccount(req: Request): Promise<void>;
 }
