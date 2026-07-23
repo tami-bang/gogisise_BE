@@ -120,7 +120,7 @@ describe('Auth Module (통합 테스트)', () => {
 
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/signup')
-        .send({ email: 'test@gogisise.com', password: 'TestPass123!', nickname: '고기러버' });
+        .send({ email: 'test@gogisise.com', password: 'TestPass123!', nickname: '고기러버', phone: '010-1234-5678' });
 
       expect(res.status).toBe(201);
       expect(res.body.success).toBe(true);
@@ -132,7 +132,7 @@ describe('Auth Module (통합 테스트)', () => {
 
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/signup')
-        .send({ email: 'test@gogisise.com', password: 'TestPass123!', nickname: '고기러버' });
+        .send({ email: 'test@gogisise.com', password: 'TestPass123!', nickname: '고기러버', phone: '010-1234-5678' });
 
       expect(res.status).toBe(409);
       expect(res.body.success).toBe(false);
@@ -141,7 +141,7 @@ describe('Auth Module (통합 테스트)', () => {
     it('[실패] 짧은 비밀번호(7자 이하)로 회원가입 시 400 Bad Request를 반환해야 한다', async () => {
       const res = await request(app.getHttpServer())
         .post('/api/v1/auth/signup')
-        .send({ email: 'test@gogisise.com', password: 'short', nickname: '고기러버' });
+        .send({ email: 'test@gogisise.com', password: 'short', nickname: '고기러버', phone: '010-1234-5678' });
 
       expect(res.status).toBe(400);
     });

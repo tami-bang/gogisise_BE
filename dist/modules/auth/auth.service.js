@@ -87,7 +87,7 @@ let AuthService = AuthService_1 = class AuthService {
                 email: dto.email,
                 password: hashedPassword,
                 nickname: dto.nickname,
-                phone: `temp_${(0, uuid_1.v4)()}`,
+                phone: dto.phone,
             },
         });
         return {

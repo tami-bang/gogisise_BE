@@ -21,6 +21,9 @@ export class SignupDto {
   @MinLength(2, { message: '닉네임은 최소 2자 이상이어야 합니다.' })
   @MaxLength(20, { message: '닉네임은 최대 20자 이하이어야 합니다.' })
   nickname: string;
+
+  @IsString({ message: '휴대폰 번호는 필수 문자열입니다.' })
+  phone: string;
 }
 
 // 일반 로그인 DTO

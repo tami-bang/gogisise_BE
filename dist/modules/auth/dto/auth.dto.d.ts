@@ -2,6 +2,7 @@ export declare class SignupDto {
     email: string;
     password: string;
     nickname: string;
+    phone: string;
 }
 export declare class LoginDto {
     email: string;

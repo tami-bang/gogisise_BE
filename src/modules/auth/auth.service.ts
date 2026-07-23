@@ -73,7 +73,7 @@ export class AuthService {
         email: dto.email,
         password: hashedPassword,
         nickname: dto.nickname,
-        phone: `temp_${uuidv4()}`, // 전화번호는 추후 본인인증 프로세스로 업데이트
+        phone: dto.phone,
       },
     });
 
