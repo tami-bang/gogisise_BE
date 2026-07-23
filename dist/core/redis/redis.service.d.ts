@@ -11,5 +11,5 @@ export declare class RedisService implements OnModuleInit, OnModuleDestroy {
     lpush(key: string, value: string): Promise<number>;
     lrange(key: string, start: number, stop: number): Promise<string[]>;
     ltrim(key: string, start: number, stop: number): Promise<string>;
-    multi(): import("ioredis").ChainableCommander;
+    multi(): any;
 }
