@@ -31,6 +31,32 @@ let MarketController = class MarketController {
             },
         };
     }
+    async getCategories(parentNo, depth) {
+        const depthNum = depth ? parseInt(depth, 10) : undefined;
+        const data = await this.marketService.getCategories({
+            parentNo,
+            depth: depthNum,
+        });
+        return {
+            success: true,
+            data,
+            meta: {
+                requestId: `req_market_cats_${Date.now()}`,
+                servedAt: new Date().toISOString(),
+            },
+        };
+    }
+    async getCategoryCalculations(categoryPath) {
+        const data = await this.marketService.getCategoryCalculations(categoryPath);
+        return {
+            success: true,
+            data,
+            meta: {
+                requestId: `req_market_cat_calc_${Date.now()}`,
+                servedAt: new Date().toISOString(),
+            },
+        };
+    }
     async getItemCalculations(itemId) {
         const data = await this.marketService.getItemCalculations(itemId);
         return {
@@ -61,6 +87,21 @@ __decorate([
     __metadata("design:paramtypes", []),
     __metadata("design:returntype", Promise)
 ], MarketController.prototype, "getAllMarketItems", null);
+__decorate([
+    (0, common_1.Get)('categories'),
+    __param(0, (0, common_1.Query)('parentNo')),
+    __param(1, (0, common_1.Query)('depth')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String]),
+    __metadata("design:returntype", Promise)
+], MarketController.prototype, "getCategories", null);
+__decorate([
+    (0, common_1.Get)('calculations'),
+    __param(0, (0, common_1.Query)('categoryPath')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], MarketController.prototype, "getCategoryCalculations", null);
 __decorate([
     (0, common_1.Get)(':itemId/calculations'),
     __param(0, (0, common_1.Param)('itemId')),

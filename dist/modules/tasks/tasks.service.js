@@ -14,24 +14,19 @@ exports.TasksService = void 0;
 const common_1 = require("@nestjs/common");
 const schedule_1 = require("@nestjs/schedule");
 const crawler_service_1 = require("../crawler/crawler.service");
-const internal_service_1 = require("../internal/internal.service");
-const market_service_1 = require("../market/market.service");
 let TasksService = TasksService_1 = class TasksService {
     crawlerService;
-    internalService;
-    marketService;
     logger = new common_1.Logger(TasksService_1.name);
-    constructor(crawlerService, internalService, marketService) {
+    constructor(crawlerService) {
         this.crawlerService = crawlerService;
-        this.internalService = internalService;
-        this.marketService = marketService;
     }
     async handleHybridMilestoneScan() {
-        this.logger.log('하이브리드 마일스톤 스캔 시작...');
+        this.logger.log('Hybrid milestone scan start');
         try {
             const latestCounts = await this.crawlerService.peekLatestMetadata();
             const savedCounts = await this.crawlerService.getLastTotalCounts();
             let hasChanged = false;
+            const changedCategories = [];
             if (!savedCounts) {
                 hasChanged = true;
             }
@@ -39,8 +34,8 @@ let TasksService = TasksService_1 = class TasksService {
                 for (const [ctgNo, count] of Object.entries(latestCounts)) {
                     if (savedCounts[ctgNo] !== count) {
                         hasChanged = true;
+                        changedCategories.push(ctgNo);
                         this.logger.log(`카테고리 ${ctgNo} 개수 변경 감지: ${savedCounts[ctgNo]} -> ${count}`);
-                        break;
                     }
                 }
             }
@@ -49,22 +44,11 @@ let TasksService = TasksService_1 = class TasksService {
                 await this.crawlerService.updateLastCheckedAt();
                 return;
             }
-            this.logger.log('데이터 변동 확인. 전체 수집 실행...');
-            const outcome = await this.crawlerService.runFullCrawl();
-            if (outcome.records && outcome.records.length > 0) {
-                this.logger.log(`${outcome.records.length}건 Bulk Upsert 시작...`);
-                const chunkSize = 100;
-                let totalInserted = 0;
-                for (let i = 0; i < outcome.records.length; i += chunkSize) {
-                    const chunk = outcome.records.slice(i, i + chunkSize);
-                    const result = await this.internalService.createRawRecordsBulk({ records: chunk });
-                    totalInserted += result.insertedCount;
-                }
-                this.logger.log(`Bulk Upsert 완료: ${totalInserted}건 삽입 (중복 제외)`);
-                await this.marketService.processRawRecordsIntoMarketItems();
-            }
+            this.logger.log('데이터 변동 확인. 큐에 크롤링 작업 발행 중...');
+            const { requestId } = await this.crawlerService.runFullCrawl(changedCategories);
+            this.logger.log(`크롤링 작업 발행 완료. requestId=${requestId}`);
             await this.crawlerService.saveLastTotalCounts(latestCounts);
-            this.logger.log('하이브리드 마일스톤 스캔 완료');
+            this.logger.log('하이브리드 마일스톤 스캔(발행 단계) 완료');
         }
         catch (error) {
             this.logger.error('마일스톤 스캔 실패', error);
@@ -80,8 +64,6 @@ __decorate([
 ], TasksService.prototype, "handleHybridMilestoneScan", null);
 exports.TasksService = TasksService = TasksService_1 = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [crawler_service_1.CrawlerService,
-        internal_service_1.InternalService,
-        market_service_1.MarketService])
+    __metadata("design:paramtypes", [crawler_service_1.CrawlerService])
 ], TasksService);
 //# sourceMappingURL=tasks.service.js.map

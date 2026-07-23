@@ -9,6 +9,11 @@ import {
 export class MarketService {
   private readonly logger = new Logger(MarketService.name);
 
+  // 💡 [한글 주석] 상세 계산 API의 응답 지연(10초 이상)을 해결하기 위한 30초 로컬 메모리 캐시 맵
+  private readonly categoryCalculationsCache = new Map<string, { data: any; fetchedAt: number }>();
+  private readonly itemCalculationsCache = new Map<string, { data: any; fetchedAt: number }>();
+  private readonly CALCULATIONS_CACHE_TTL = 30 * 1000; // 30초 캐시
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -129,6 +134,12 @@ export class MarketService {
    * 카테고리 경로 기준으로 산출 세부 내역 반환
    */
   async getCategoryCalculations(categoryPath: string) {
+    // 💡 [한글 주석] 30초 이내에 조회된 동일 카테고리 시세 계산 결과가 메모리 캐시에 존재할 경우 즉시 반환 (API 성능 지연 해결)
+    const cached = this.categoryCalculationsCache.get(categoryPath);
+    if (cached && Date.now() - cached.fetchedAt < this.CALCULATIONS_CACHE_TTL) {
+      return cached.data;
+    }
+
     const isPork =
       categoryPath.includes('돈육') || categoryPath.includes('한돈');
     const isBeef =
@@ -337,7 +348,7 @@ export class MarketService {
       ? new Date(Math.max(...collectionTimestamps)).toISOString()
       : null;
 
-    return {
+    const result = {
       itemId: `cat-${displayName}`,
       displayName,
       grade: null,
@@ -385,12 +396,26 @@ export class MarketService {
         };
       }),
     };
+
+    // 💡 [한글 주석] 결과를 30초 동안 로컬 메모리 캐시에 보관
+    this.categoryCalculationsCache.set(categoryPath, {
+      data: result,
+      fetchedAt: Date.now(),
+    });
+
+    return result;
   }
 
   /**
    * 특정 품목의 시세 산출 세부 내역 (원본 매물) 반환
    */
   async getItemCalculations(itemId: string) {
+    // 💡 [한글 주석] 30초 이내에 동일한 품목 ID로 계산된 시세 결과가 캐시에 존재하면 즉시 반환 (속도 최적화)
+    const cached = this.itemCalculationsCache.get(itemId);
+    if (cached && Date.now() - cached.fetchedAt < this.CALCULATIONS_CACHE_TTL) {
+      return cached.data;
+    }
+
     const item = await this.prisma.marketItem.findFirst({
       where: { itemId, status: 'ACTIVE' },
       include: {
@@ -572,7 +597,7 @@ export class MarketService {
       return hasCorrectKeyword;
     });
 
-    return {
+    const result = {
       itemId: item.itemId,
       displayName: item.displayName || item.name,
       grade: item.grade || null,
@@ -597,6 +622,14 @@ export class MarketService {
         expiresAt: si.expiresAt,
       })),
     };
+
+    // 💡 [한글 주석] 결과를 30초 동안 메모리 캐시에 보관
+    this.itemCalculationsCache.set(itemId, {
+      data: result,
+      fetchedAt: Date.now(),
+    });
+
+    return result;
   }
 
   /**

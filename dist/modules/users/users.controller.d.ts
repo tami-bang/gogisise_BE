@@ -27,7 +27,7 @@ export declare class UsersController {
                 species: string;
                 storageType: string;
                 category: string;
-                displayName: string;
+                displayName: string | null;
                 searchKeywords: string;
                 grade: string | null;
                 price: number | null;

@@ -31,6 +31,9 @@ async function bootstrap() {
         forbidNonWhitelisted: true,
         transform: true,
     }));
+    const bodyParser = require('body-parser');
+    app.use(bodyParser.json({ limit: '50mb' }));
+    app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
     if (!process.env.VERCEL) {
         const port = process.env.PORT || 8000;
         await app.listen(port);

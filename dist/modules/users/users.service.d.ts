@@ -17,7 +17,7 @@ export declare class UsersService {
         species: string;
         storageType: string;
         category: string;
-        displayName: string;
+        displayName: string | null;
         searchKeywords: string;
         grade: string | null;
         price: number | null;

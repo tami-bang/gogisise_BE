@@ -1,55 +1,27 @@
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { MarketItemsDataResponseDto, PriceHistoryDataResponseDto } from './dto/market-response.dto';
 export declare class MarketService {
     private readonly prisma;
+    private readonly logger;
+    private readonly categoryCalculationsCache;
+    private readonly itemCalculationsCache;
+    private readonly CALCULATIONS_CACHE_TTL;
     constructor(prisma: PrismaService);
-    getAllMarketItems(): Promise<{
-        dataStatus: string;
-        marketDate: string;
-        items: {
-            itemId: string;
-            priceId: string | null;
-            species: string;
-            storageType: string;
-            category: string;
-            displayName: string;
-            searchKeywords: string;
-            grade: string | null;
-            price: number | null;
-            previousPrice: number | null;
-            changeAmount: number | null;
-            trendStatus: string | null;
-            currency: string;
-            priceUnit: string;
-        }[];
-    }>;
-    getItemCalculations(itemId: string): Promise<{
-        itemId: string;
-        displayName: string;
-        averagePrice: number | null;
-        changeAmount: number | null;
-        trendStatus: string | null;
-        highestPrice: number | null;
-        lowestPrice: number | null;
-        participantCount: number | null;
-        sourceRecords: {
-            id: string;
-            sourceName: string;
-            rawProductName: string;
-            price: number;
-            ageInMonths: number | null;
-            collectedAt: string;
-            includedInAverage: boolean;
-        }[];
-    }>;
-    getItemPriceHistory(itemId: string): Promise<{
-        item: {
-            itemId: string;
-            displayName: string;
-        };
-        points: {
-            marketDate: string;
-            price: number | null;
-        }[];
-    }>;
+    getAllMarketItems(): Promise<MarketItemsDataResponseDto>;
+    getCategories(options: {
+        parentNo?: string;
+        depth?: number;
+    }): Promise<{
+        path: string;
+        createdAt: Date;
+        updatedAt: Date;
+        name: string;
+        ctgNo: string;
+        parentNo: string | null;
+        depth: number;
+    }[]>;
+    getCategoryCalculations(categoryPath: string): Promise<any>;
+    getItemCalculations(itemId: string): Promise<any>;
+    getItemPriceHistory(itemId: string): Promise<PriceHistoryDataResponseDto>;
     processRawRecordsIntoMarketItems(targetDate?: Date): Promise<void>;
 }

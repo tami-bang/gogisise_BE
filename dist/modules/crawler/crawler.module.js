@@ -8,13 +8,17 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CrawlerModule = void 0;
 const common_1 = require("@nestjs/common");
+const axios_1 = require("@nestjs/axios");
 const crawler_service_1 = require("./crawler.service");
 const prisma_service_1 = require("../../core/prisma/prisma.service");
+const crawler_controller_1 = require("./crawler.controller");
 let CrawlerModule = class CrawlerModule {
 };
 exports.CrawlerModule = CrawlerModule;
 exports.CrawlerModule = CrawlerModule = __decorate([
     (0, common_1.Module)({
+        imports: [axios_1.HttpModule],
+        controllers: [crawler_controller_1.CrawlerController],
         providers: [crawler_service_1.CrawlerService, prisma_service_1.PrismaService],
         exports: [crawler_service_1.CrawlerService],
     })

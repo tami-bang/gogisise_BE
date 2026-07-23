@@ -1,29 +1,35 @@
 import { MarketService } from './market.service';
+import { MarketItemsDataResponseDto, PriceHistoryDataResponseDto } from './dto/market-response.dto';
 export declare class MarketController {
     private readonly marketService;
     constructor(marketService: MarketService);
     getAllMarketItems(): Promise<{
+        success: true;
+        data: MarketItemsDataResponseDto;
+        meta: {
+            requestId: string;
+            servedAt: string;
+        };
+    }>;
+    getCategories(parentNo?: string, depth?: string): Promise<{
         success: boolean;
         data: {
-            dataStatus: string;
-            marketDate: string;
-            items: {
-                itemId: string;
-                priceId: string | null;
-                species: string;
-                storageType: string;
-                category: string;
-                displayName: string;
-                searchKeywords: string;
-                grade: string | null;
-                price: number | null;
-                previousPrice: number | null;
-                changeAmount: number | null;
-                trendStatus: string | null;
-                currency: string;
-                priceUnit: string;
-            }[];
+            path: string;
+            createdAt: Date;
+            updatedAt: Date;
+            name: string;
+            ctgNo: string;
+            parentNo: string | null;
+            depth: number;
+        }[];
+        meta: {
+            requestId: string;
+            servedAt: string;
         };
+    }>;
+    getCategoryCalculations(categoryPath: string): Promise<{
+        success: boolean;
+        data: any;
         meta: {
             requestId: string;
             servedAt: string;
@@ -31,42 +37,15 @@ export declare class MarketController {
     }>;
     getItemCalculations(itemId: string): Promise<{
         success: boolean;
-        data: {
-            itemId: string;
-            displayName: string;
-            averagePrice: number | null;
-            changeAmount: number | null;
-            trendStatus: string | null;
-            highestPrice: number | null;
-            lowestPrice: number | null;
-            participantCount: number | null;
-            sourceRecords: {
-                id: string;
-                sourceName: string;
-                rawProductName: string;
-                price: number;
-                ageInMonths: number | null;
-                collectedAt: string;
-                includedInAverage: boolean;
-            }[];
-        };
+        data: any;
         meta: {
             requestId: string;
             servedAt: string;
         };
     }>;
     getItemPriceHistory(itemId: string): Promise<{
-        success: boolean;
-        data: {
-            item: {
-                itemId: string;
-                displayName: string;
-            };
-            points: {
-                marketDate: string;
-                price: number | null;
-            }[];
-        };
+        success: true;
+        data: PriceHistoryDataResponseDto;
         meta: {
             requestId: string;
             servedAt: string;
