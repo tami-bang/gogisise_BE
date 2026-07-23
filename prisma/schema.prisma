@@ -31,6 +31,8 @@ model RawRecord {
   // 💡 [한글 주석] 상세 집계 쿼리 속도 개선을 위한 복합 인덱스 및 카테고리 인덱스 추가
   @@index([species, storageType, collectedAt], map: "idx_raw_records_query")
   @@index([category], map: "idx_raw_records_category")
+  // 💡 [한글 주석] 3단 복합 필터링 성능 극대화를 위한 복합 인덱스 추가
+  @@index([species, storageType, category], map: "idx_raw_records_lookup")
   @@map("Raw_Records")
 }
 

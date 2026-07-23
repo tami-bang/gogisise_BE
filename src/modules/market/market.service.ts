@@ -134,9 +134,14 @@ export class MarketService {
    * 카테고리 경로 기준으로 산출 세부 내역 반환
    */
   async getCategoryCalculations(categoryPath: string) {
+    const timeLabel = `[CategoryCalculations] ${categoryPath}`;
+    console.time(timeLabel);
+
     // 💡 [한글 주석] 3분 이내에 조회된 동일 카테고리 시세 계산 결과가 메모리 캐시에 존재할 경우 즉시 반환 (API 성능 지연 해결)
     const cached = this.categoryCalculationsCache.get(categoryPath);
     if (cached && Date.now() - cached.fetchedAt < this.CALCULATIONS_CACHE_TTL) {
+      console.log(`⚡ Cache Hit category calculations for: ${categoryPath}`);
+      console.timeEnd(timeLabel);
       return cached.data;
     }
 
@@ -164,6 +169,7 @@ export class MarketService {
     const catName = categoryParts[categoryParts.length - 1] || '';
 
     // 💡 [한글 주석] DB 레벨에서 직접 평균, 최저가, 최고가, 개수를 집계하여 Node.js 단의 수만 건 메모리 순회 연산을 제거합니다.
+    console.time(`${timeLabel} - 1. DB Aggregate RawRecords`);
     const aggregateResult = await this.prisma.rawRecord.aggregate({
       where: {
         species,
@@ -183,8 +189,10 @@ export class MarketService {
         rawRecordId: true,
       },
     });
+    console.timeEnd(`${timeLabel} - 1. DB Aggregate RawRecords`);
 
     // 💡 [한글 주석] 목록 상세 표기용 RawRecord 조회를 'take: 20' 과 필수 컬럼 select 조건으로 대폭 단순화
+    console.time(`${timeLabel} - 2. DB findMany RawRecords (limit 20)`);
     const strictFilteredRecords = await this.prisma.rawRecord.findMany({
       where: {
         species,
@@ -205,6 +213,7 @@ export class MarketService {
         category: true,
       },
     });
+    console.timeEnd(`${timeLabel} - 2. DB findMany RawRecords (limit 20)`);
 
     // 부위명 매핑 고도화 (Name Mapping)
     const mappedSourceRecords = strictFilteredRecords.map((r) => {
@@ -243,8 +252,9 @@ export class MarketService {
       };
     });
 
-    // 💡 [한글 주석] B-Tree 인덱스(idx_market_items_category)를 온전히 활용하기 위해
+    // B-Tree 인덱스(idx_market_items_category)를 온전히 활용하기 위해
     // endsWith 조건 대신 CategoryTree 테이블에서 해당 부위명으로 끝나는 카테고리 전체 경로 리스트를 먼저 조회합니다.
+    console.time(`${timeLabel} - 3. DB CategoryTree lookup`);
     const matchedCategories = await this.prisma.categoryTree.findMany({
       where: {
         path: { endsWith: catName },
@@ -252,8 +262,10 @@ export class MarketService {
       select: { path: true },
     });
     const categoryPaths = matchedCategories.map((c) => c.path);
+    console.timeEnd(`${timeLabel} - 3. DB CategoryTree lookup`);
 
-    // 💡 [한글 주석] category: { in: categoryPaths } 를 사용해 인덱스 레인지 스캔이 유도되도록 쿼리 튜닝 완료
+    // category: { in: categoryPaths } 를 사용해 인덱스 레인지 스캔이 유도되도록 쿼리 튜닝 완료
+    console.time(`${timeLabel} - 4. DB findMany MarketItems`);
     const sourceItems = await this.prisma.marketItem.findMany({
       where: {
         status: 'ACTIVE',
@@ -277,9 +289,9 @@ export class MarketService {
       },
       orderBy: { price: 'asc' },
     });
+    console.timeEnd(`${timeLabel} - 4. DB findMany MarketItems`);
 
-    // 카드별 전일 변동과 7일 차트를 N+1 없이 계산한다. 먼저 해당 부위의 최근
-    // 7개 기록일만 찾고, 그 날짜 범위의 모든 상품 가격을 한 번에 조회한다.
+    console.time(`${timeLabel} - 5. DB Prices lookup`);
     const sourceItemIds = sourceItems.map((item) => item.itemId);
     const recentMarketDates = sourceItemIds.length > 0
       ? await this.prisma.marketItemPrice.findMany({
@@ -300,7 +312,9 @@ export class MarketService {
           select: { itemId: true, marketDate: true, price: true },
         })
       : [];
+    console.timeEnd(`${timeLabel} - 5. DB Prices lookup`);
 
+    console.time(`${timeLabel} - 6. Chart JS processing`);
     const historyByItem = new Map<
       string,
       Array<{ marketDate: Date; price: number | null }>
@@ -333,6 +347,7 @@ export class MarketService {
       marketDate: row.marketDate.toISOString().split('T')[0],
       price: Math.round(row._avg.price ?? 0),
     }));
+    console.timeEnd(`${timeLabel} - 6. Chart JS processing`);
 
     // 카테고리는 수집 단계에서 이미 정규화되어 있다. 상품명에 부위명이 반복되지
     // 않는 정상 상품까지 제거하던 키워드 기반 2차 필터는 적용하지 않는다.
@@ -431,6 +446,7 @@ export class MarketService {
       fetchedAt: Date.now(),
     });
 
+    console.timeEnd(timeLabel);
     return result;
   }
 
@@ -438,30 +454,56 @@ export class MarketService {
    * 특정 품목의 시세 산출 세부 내역 (원본 매물) 반환
    */
   async getItemCalculations(itemId: string) {
+    const timeLabel = `[ItemCalculations] ${itemId}`;
+    console.time(timeLabel);
+
     // 💡 [한글 주석] 3분 이내에 동일한 품목 ID로 계산된 시세 결과가 캐시에 존재하면 즉시 반환 (속도 최적화)
     const cached = this.itemCalculationsCache.get(itemId);
     if (cached && Date.now() - cached.fetchedAt < this.CALCULATIONS_CACHE_TTL) {
+      console.log(`⚡ Cache Hit item calculations for: ${itemId}`);
+      console.timeEnd(timeLabel);
       return cached.data;
     }
 
+    // 💡 [한글 주석] 무거운 조인 쿼리(include)를 완전히 제거하고 필수 단독 칼럼만 Flat하게 select
+    console.time(`${timeLabel} - 1. DB findFirst MarketItem (Flat)`);
     const item = await this.prisma.marketItem.findFirst({
       where: { itemId, status: 'ACTIVE' },
-      include: {
-        prices: {
-          orderBy: { marketDate: 'desc' },
-          take: 1,
-        },
+      select: {
+        itemId: true,
+        name: true,
+        displayName: true,
+        price: true,
+        grade: true,
+        category: true,
+        species: true,
+        storageType: true,
       },
     });
 
     if (!item) {
+      console.timeEnd(timeLabel);
       throw new NotFoundException(`품목(ID: ${itemId})을 찾을 수 없습니다.`);
     }
 
-    const latestPrice = item.prices[0];
-    const currentPrice = item.price || latestPrice?.price;
+    // 💡 [한글 주석] 무거운 include 대신 별도 테이블에서 최신 가격 1건만 단독 select 하여 가공
+    const latestPriceRecord = await this.prisma.marketItemPrice.findFirst({
+      where: { itemId: item.itemId },
+      orderBy: { marketDate: 'desc' },
+      select: {
+        price: true,
+        changeAmount: true,
+        trendStatus: true,
+        highestPrice: true,
+        lowestPrice: true,
+      },
+    });
+    console.timeEnd(`${timeLabel} - 1. DB findFirst MarketItem (Flat)`);
+
+    const currentPrice = item.price || latestPriceRecord?.price;
 
     if (!currentPrice) {
+      console.timeEnd(timeLabel);
       throw new NotFoundException(
         '해당 품목의 가격 데이터가 존재하지 않습니다.',
       );
@@ -485,6 +527,7 @@ export class MarketService {
     const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
 
     // 💡 [한글 주석] DB 레벨에서 직접 평균, 최저가, 최고가, 개수를 집계하여 Node.js 단의 메모리 연산 병목 제거
+    console.time(`${timeLabel} - 2. DB Aggregate RawRecords`);
     const aggregateResult = await this.prisma.rawRecord.aggregate({
       where: {
         species: item.species || parsedSpecies || undefined,
@@ -505,8 +548,10 @@ export class MarketService {
         rawRecordId: true,
       },
     });
+    console.timeEnd(`${timeLabel} - 2. DB Aggregate RawRecords`);
 
     // 💡 [한글 주석] 상세 목록용 RawRecord 조회를 필수 컬럼 select와 'take: 20'으로 대폭 단순화
+    console.time(`${timeLabel} - 3. DB findMany RawRecords (limit 20)`);
     const strictFilteredRecords = await this.prisma.rawRecord.findMany({
       where: {
         species: item.species || parsedSpecies || undefined,
@@ -528,6 +573,7 @@ export class MarketService {
         category: true,
       },
     });
+    console.timeEnd(`${timeLabel} - 3. DB findMany RawRecords (limit 20)`);
 
     // 2. 부위명 매핑 고도화 (Name Mapping)
     const mappedSourceRecords = strictFilteredRecords.map((r) => {
@@ -567,6 +613,7 @@ export class MarketService {
     });
 
     // sourceItems: 원본 MarketItem 리스트 (금천미트 바로가기용)
+    console.time(`${timeLabel} - 4. DB findMany MarketItems`);
     const sourceItems = await this.prisma.marketItem.findMany({
       where: {
         status: 'ACTIVE',
@@ -587,7 +634,9 @@ export class MarketService {
       },
       orderBy: { price: 'asc' },
     });
+    console.timeEnd(`${timeLabel} - 4. DB findMany MarketItems`);
 
+    console.time(`${timeLabel} - 5. Filtering and Final mapping`);
     const filteredSourceItems = sourceItems.filter((si) => {
       // 본인은 항상 포함
       if (si.itemId === item.itemId) return true;
@@ -639,10 +688,10 @@ export class MarketService {
       displayName: item.displayName || item.name,
       grade: item.grade || null,
       averagePrice: currentPrice,
-      changeAmount: latestPrice?.changeAmount ?? 0,
-      trendStatus: latestPrice?.trendStatus ?? 'UNCHANGED',
-      highestPrice: latestPrice?.highestPrice ?? currentPrice,
-      lowestPrice: latestPrice?.lowestPrice ?? currentPrice,
+      changeAmount: latestPriceRecord?.changeAmount ?? 0,
+      trendStatus: latestPriceRecord?.trendStatus ?? 'UNCHANGED',
+      highestPrice: latestPriceRecord?.highestPrice ?? currentPrice,
+      lowestPrice: latestPriceRecord?.lowestPrice ?? currentPrice,
       participantCount: aggregateResult._count.rawRecordId, // 실 참여 개수 반영
       sourceRecords: mappedSourceRecords,
       sourceItems: filteredSourceItems.map((si) => ({
