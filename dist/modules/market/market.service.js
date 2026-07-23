@@ -137,12 +137,15 @@ let MarketService = MarketService_1 = class MarketService {
             .map((part) => part.trim())
             .filter(Boolean);
         const catName = categoryParts[categoryParts.length - 1] || '';
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         console.time(`${timeLabel} - 1. DB Aggregate RawRecords`);
         const aggregateResult = await this.prisma.rawRecord.aggregate({
             where: {
                 species,
                 storageType,
                 category: catName,
+                collectedAt: { gte: sevenDaysAgo },
             },
             _avg: {
                 pricePerKg: true,
@@ -164,6 +167,7 @@ let MarketService = MarketService_1 = class MarketService {
                 species,
                 storageType,
                 category: catName,
+                collectedAt: { gte: sevenDaysAgo },
             },
             orderBy: { collectedAt: 'desc' },
             take: 20,
@@ -431,12 +435,15 @@ let MarketService = MarketService_1 = class MarketService {
                 : item.storageType;
         const catParts = item.category.split(' > ');
         const catName = catParts[catParts.length - 1];
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
         console.time(`${timeLabel} - 2. DB Aggregate RawRecords`);
         const aggregateResult = await this.prisma.rawRecord.aggregate({
             where: {
                 species: item.species || parsedSpecies || undefined,
                 storageType: item.storageType || parsedStorageType || undefined,
                 category: catName,
+                collectedAt: { gte: sevenDaysAgo },
                 ...(item.grade ? { qualityGrade: item.grade } : {}),
             },
             _avg: {
@@ -459,6 +466,7 @@ let MarketService = MarketService_1 = class MarketService {
                 species: item.species || parsedSpecies || undefined,
                 storageType: item.storageType || parsedStorageType || undefined,
                 category: catName,
+                collectedAt: { gte: sevenDaysAgo },
                 ...(item.grade ? { qualityGrade: item.grade } : {}),
             },
             orderBy: { collectedAt: 'desc' },

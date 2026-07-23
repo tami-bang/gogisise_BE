@@ -8,6 +8,7 @@ datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL") // DDL 마이그레이션용 직접 연결
+  relationMode = "prisma"
 }
 
 model RawRecord {

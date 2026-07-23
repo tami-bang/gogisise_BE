@@ -168,6 +168,10 @@ export class MarketService {
       .filter(Boolean);
     const catName = categoryParts[categoryParts.length - 1] || '';
 
+    // 💡 [한글 주석] 성능 극대화 및 풀 스캔 방지를 위해 집계 대상 기한을 최근 7일로 제한합니다.
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
     // 💡 [한글 주석] DB 레벨에서 직접 평균, 최저가, 최고가, 개수를 집계하여 Node.js 단의 수만 건 메모리 순회 연산을 제거합니다.
     console.time(`${timeLabel} - 1. DB Aggregate RawRecords`);
     const aggregateResult = await this.prisma.rawRecord.aggregate({
@@ -175,6 +179,7 @@ export class MarketService {
         species,
         storageType,
         category: catName,
+        collectedAt: { gte: sevenDaysAgo },
       },
       _avg: {
         pricePerKg: true,
@@ -198,6 +203,7 @@ export class MarketService {
         species,
         storageType,
         category: catName,
+        collectedAt: { gte: sevenDaysAgo },
       },
       orderBy: { collectedAt: 'desc' },
       take: 20,
@@ -526,6 +532,10 @@ export class MarketService {
     const catParts = item.category.split(' > ');
     const catName = catParts[catParts.length - 1]; // "우둔", "안심" 등
 
+    // 💡 [한글 주석] 성능 극대화 및 풀 스캔 방지를 위해 집계 대상 기한을 최근 7일로 제한합니다.
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
     // 💡 [한글 주석] DB 레벨에서 직접 평균, 최저가, 최고가, 개수를 집계하여 Node.js 단의 메모리 연산 병목 제거
     console.time(`${timeLabel} - 2. DB Aggregate RawRecords`);
     const aggregateResult = await this.prisma.rawRecord.aggregate({
@@ -533,6 +543,7 @@ export class MarketService {
         species: item.species || parsedSpecies || undefined,
         storageType: item.storageType || parsedStorageType || undefined,
         category: catName,
+        collectedAt: { gte: sevenDaysAgo },
         ...(item.grade ? { qualityGrade: item.grade } : {}),
       },
       _avg: {
@@ -557,6 +568,7 @@ export class MarketService {
         species: item.species || parsedSpecies || undefined,
         storageType: item.storageType || parsedStorageType || undefined,
         category: catName,
+        collectedAt: { gte: sevenDaysAgo },
         ...(item.grade ? { qualityGrade: item.grade } : {}),
       },
       orderBy: { collectedAt: 'desc' },
