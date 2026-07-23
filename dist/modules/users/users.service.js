@@ -86,14 +86,32 @@ let UsersService = class UsersService {
         });
         return favorites.map(({ item }) => {
             const latestPrice = item.prices[0];
+            const isPork = item.category?.includes('돈육');
+            const isBeef = item.category?.includes('한우') || item.category?.includes('소고기');
+            const parsedSpecies = isPork ? 'PORK' : isBeef ? 'BEEF' : item.species;
+            const isChilled = item.category?.includes('냉장');
+            const isFrozen = item.category?.includes('냉동');
+            const parsedStorageType = isChilled ? 'CHILLED' : isFrozen ? 'FROZEN' : item.storageType;
+            const categoryParts = item.category?.split(/\s*>\s*|\s*,\s*/).filter(Boolean);
+            const parsedCategory = categoryParts && categoryParts.length > 0
+                ? categoryParts[categoryParts.length - 1]
+                : item.category;
+            const parsedDisplayName = item.displayName || item.name || (categoryParts && categoryParts.length > 0
+                ? categoryParts[categoryParts.length - 1]
+                : '');
             return {
                 itemId: item.itemId,
-                species: item.species,
-                storageType: item.storageType,
-                category: item.category,
-                displayName: item.displayName,
+                species: parsedSpecies,
+                storageType: parsedStorageType,
+                category: parsedCategory,
+                displayName: parsedDisplayName,
                 searchKeywords: item.searchKeywords || '',
                 grade: item.grade,
+                ageMonths: item.ageMonths,
+                weightKg: item.weightKg ? Number(item.weightKg) : null,
+                salePrice: item.salePrice,
+                manufacturedAt: item.manufacturedAt ? item.manufacturedAt.toISOString() : null,
+                expiresAt: item.expiresAt ? item.expiresAt.toISOString() : null,
                 price: latestPrice?.price ?? null,
                 previousPrice: latestPrice?.previousPrice ?? null,
                 changeAmount: latestPrice?.changeAmount ?? null,

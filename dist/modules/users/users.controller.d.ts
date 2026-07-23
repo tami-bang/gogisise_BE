@@ -28,9 +28,14 @@ export declare class UsersController {
                 species: string;
                 storageType: string;
                 category: string;
-                displayName: string | null;
+                displayName: string;
                 searchKeywords: string;
                 grade: string | null;
+                ageMonths: number | null;
+                weightKg: number | null;
+                salePrice: number | null;
+                manufacturedAt: string | null;
+                expiresAt: string | null;
                 price: number | null;
                 previousPrice: number | null;
                 changeAmount: number | null;
